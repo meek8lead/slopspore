@@ -221,6 +221,15 @@ let levelTimer = 0;
 let reactivity = { foodDensity: 1, predatorDensity: 1, difficulty: 1 };
 const carrionBuf: THREE.Vector3[] = []; // переиспользуемый буфер позиций детрита (без аллокаций/кадр)
 
+// ── крупные NPC: касательный урон шипами + «контакт» (близость) для боли ──
+// effectiveContactR(npc) — дистанция, с которой крупняк реально достает;
+// threatRadiusOf(npc) — больше: «зона погони», из которой можно вырваться.
+// Объявлены ДО игрового цикла: используются и в evasion-расчёте, и в цикле NPC.
+const effectiveContactR = (npc: { spec: { size: number } }) =>
+  npc.spec.size + CONFIG.npc.large.contactRange * 0.35 + Math.sqrt(player.mass) * 0.7;
+const threatRadiusOf = (npc: { spec: { size: number } }) =>
+  (npc.spec.size + CONFIG.npc.large.contactRange * 0.35) * 3 + npc.spec.size;
+
 function frame(now: number) {
   const dt = Math.min(CONFIG.render.maxDt, (now - last) / 1000);
   last = now;
@@ -235,8 +244,7 @@ function frame(now: number) {
     for (const npc of npcManager.npcs) {
       if (!npc.alive || npc.spec.tier !== 'large') continue;
       const d = npc.position.distanceTo(player.position);
-      const threatR =
-        (npc.spec.size + CONFIG.npc.large.contactRange * 0.35) * 3 + npc.spec.size;
+      const threatR = threatRadiusOf(npc);
       if (d < threatR) {
         const closeness = 1 - d / threatR; // чем ближе — тем сильнее рывок
         fleeBoost = Math.max(fleeBoost, behavior.evasion * CONFIG.player.evasionSpeedBonus * closeness);
@@ -407,6 +415,10 @@ function frame(now: number) {
       npcManager.notifyKilled();
     },
   );
+  let attackedByLarge = false; // крупный реально достал шипами в этом кадре
+  let inContact = false;       // «в хватке» — накапливаем боль (uHurt)
+  let nearThreat = false;      // крупный рядом, но не достает — потенциал уклонения
+
   for (const npc of npcManager.npcs) {
     if (!npc.alive) continue;
     const d = npc.position.distanceTo(player.position);
@@ -424,7 +436,7 @@ function frame(now: number) {
       npcManager.notifyKilled();
     } else if (
       npc.spec.tier === 'large' &&
-      d < npc.spec.size + CONFIG.npc.large.contactRange * 0.35 + Math.sqrt(player.mass) * 0.7
+      d < effectiveContactR(npc)
     ) {
       // шипастый крупняк бьёт при касании — мир отвечает на вторжение
       // armor гасит урон внутри damage(); recentDamage копит ПРОШЕДШИЙ урон
@@ -432,7 +444,19 @@ function frame(now: number) {
       recentDamage = Math.min(1, recentDamage + dealt * 0.06);
       // броня нарабатывается реальным танкованием ударов (событие через pulse)
       if (dealt > 0) behavior.pulse('armor', CONFIG.behavior.armorHitPulse);
+      attackedByLarge = true;
+      inContact = true;
+    } else if (npc.spec.tier === 'large' && d < threatRadiusOf(npc)) {
+      nearThreat = true;
     }
+  }
+  // Боль от ран — диегетический сигнал: тело темнеет к багровому и дрожит
+  // (uHurt в шейдере), затухает само через hurtRecovery. Никаких уведомлений.
+  if (inContact) player.hurtSignal = Math.min(1, player.hurtSignal + dt * 0.8);
+  // Уклонение — событие: «был в зоне погони крупняка — вырвался».
+  // Поле evasion наполняется только реальным спасением, не накапкой напрямую.
+  if (nearThreat && !attackedByLarge && moving) {
+    behavior.pulse('evasion', CONFIG.behavior.evasionDodgePulse * dt);
   }
 
   food.respawnDead(player.position, palette);

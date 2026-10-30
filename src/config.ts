@@ -41,6 +41,7 @@ export const CONFIG = {
     symbiosisTickPulse: 0.05,   // слабый непрерывный импульс за сосуществование (событие-тик)
     symbiosisFeedPulse: 0.25,   // кормление «своего» существа едой — событие симбиоза
     detritusRatio: 0.45,       // доля энергии NPC, остающаяся в трупе
+    evasionDodgePulse: 0.3,    // успешное уклонение от атаки крупного — событие evasion
   },
   player: {
     accel: 14,
