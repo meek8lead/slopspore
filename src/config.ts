@@ -16,6 +16,7 @@ export const CONFIG = {
     pulseDecay: 2.5,
     foodPulse: 0.6,
     npcPulse: 0.9,
+    armorHitPulse: 0.08,        // маленький импульс брони за каждый прошедший удар
     detritusRatio: 0.45,       // доля энергии NPC, остающаяся в трупе
   },
   player: {
@@ -79,7 +80,7 @@ export const CONFIG = {
       energyRatio: 3.5,        // × базовой npcEnergy
       fleeRange: 2.0,          // почти не убегают
       damage: 9,               // касательный урон энергии игрока (в секунду контакта)
-      contactRange: 1.8,
+      contactRange: 1.8,       // базовый; эффективный = size + contactRange (см. main.ts)
       colorSeed: 0.55,
     },
   },

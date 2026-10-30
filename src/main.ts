@@ -166,7 +166,24 @@ function frame(now: number) {
   t += dt;
 
   const input = readInput();
-  const { sample, moving } = player.update(dt, input, medium);
+
+  // ── evasion: рывок скорости только когда рядом угроза (крупный NPC близко) ──
+  // Считаем по позициям прошлого кадра — порядок вызовов не нарушает инварианты.
+  let fleeBoost = 0;
+  if (behavior.evasion > 0.02) {
+    for (const npc of npcManager.npcs) {
+      if (!npc.alive || npc.spec.tier !== 'large') continue;
+      const d = npc.position.distanceTo(player.position);
+      const threatR =
+        (npc.spec.size + CONFIG.npc.large.contactRange * 0.35) * 3 + npc.spec.size;
+      if (d < threatR) {
+        const closeness = 1 - d / threatR; // чем ближе — тем сильнее рывок
+        fleeBoost = Math.max(fleeBoost, behavior.evasion * CONFIG.player.evasionSpeedBonus * closeness);
+      }
+    }
+  }
+
+  const { sample, moving } = player.update(dt, input, medium, fleeBoost);
 
   // passive chemosynthesis
   player.energy = Math.min(
@@ -201,6 +218,9 @@ function frame(now: number) {
     sessility: !moving,
     chemosynthesis: sample.chemEnergy > 0.5,
     photosynthesis: sample.luminosity > 0.6,
+    // evasion наполняется только реальным убеганием (вблизи угрозы с рывком) —
+    // иначе поле осталось бы мёртвым; это событие, а не прямая накапка
+    evasion: fleeBoost > 0 && moving,
   });
 
   // eat food
@@ -217,8 +237,12 @@ function frame(now: number) {
     behavior.pulse('scavenging', CONFIG.behavior.foodPulse);
   }
 
+  // ── токсичная аура: отпугивает мелких существ (main считает из behavior.toxicity) ──
+  const repelRadius =
+    behavior.toxicity * Math.sqrt(player.mass) * CONFIG.player.toxicityRadiusFactor;
+
   // NPCs: менеджер обновляет популяцию по localLevel и predatorDensity
-  npcManager.update(dt, t, player.position, localLevelCache, reactivity.predatorDensity);
+  npcManager.update(dt, t, player.position, localLevelCache, reactivity.predatorDensity, repelRadius);
   for (const npc of npcManager.npcs) {
     if (!npc.alive) continue;
     const d = npc.position.distanceTo(player.position);
@@ -235,11 +259,14 @@ function frame(now: number) {
       npcManager.notifyKilled();
     } else if (
       npc.spec.tier === 'large' &&
-      d < CONFIG.npc.large.contactRange + Math.sqrt(player.mass) * 0.7
+      d < npc.spec.size + CONFIG.npc.large.contactRange * 0.35 + Math.sqrt(player.mass) * 0.7
     ) {
       // шипастый крупняк бьёт при касании — мир отвечает на вторжение
-      player.damage(CONFIG.npc.large.damage * dt);
-      recentDamage = Math.min(1, recentDamage + dt * 1.5);
+      // armor гасит урон внутри damage(); recentDamage копит ПРОШЕДШИЙ урон
+      const dealt = player.damage(CONFIG.npc.large.damage * dt);
+      recentDamage = Math.min(1, recentDamage + dealt * 0.06);
+      // броня нарабатывается реальным танкованием ударов (событие через pulse)
+      if (dealt > 0) behavior.pulse('armor', CONFIG.behavior.armorHitPulse);
     }
   }
 
