@@ -33,6 +33,10 @@ export const CONFIG = {
     passiveGain: 0.35,
     eatRange: 1.1,
     npcEatRange: 1.3,
+    armorMitigation: 0.7,      // макс. доля гашения урона при armor=1
+    hurtRecovery: 0.5,         // скорость затухания hurtSignal (сек⁻¹)
+    toxicityRadiusFactor: 1.6, // радиус отпугивания мелких = size × фактор
+    evasionSpeedBonus: 0.45,   // +к maxSpeed при evasion=1 (только в убегании — см. main)
     // growth / mitosis
     massStart: 1.0,
     massMin: 0.3,

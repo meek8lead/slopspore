@@ -17,6 +17,9 @@ export class Player {
   private material: THREE.ShaderMaterial;
   private behavior: BehaviorProfile;
   private t = 0;
+  // диегетический сигнал недавнего урона (0..1): тело гаснет и дрожит.
+  // Не накапливается напрямую в behavior — только через pulse() из main.ts.
+  hurtSignal = 0;
 
   constructor(
     scene: THREE.Scene,
@@ -35,6 +38,9 @@ export class Player {
         uFlash: { value: 0 },
         uStretch: { value: 0 },
         uStretchDir: { value: new THREE.Vector3(1, 0, 0) },
+        uHurt: { value: 0 },
+        uToxin: { value: 0 },
+        uArmor: { value: 0 },
         uPalette: { value: paletteArray },
       },
       vertexShader: VERT,
@@ -48,6 +54,7 @@ export class Player {
     dt: number,
     input: { x: number; y: number; v: number },
     medium: Medium,
+    fleeBoost = 0, // evasion-бонус от main.ts: >0 только когда рядом угроза
   ): { sample: ReturnType<Medium['sample']>; moving: boolean } {
     this.t += dt;
     const sample = medium.sample(this.position.x, this.position.y, this.position.z);
@@ -69,9 +76,10 @@ export class Player {
     const vDrag = Math.exp(-CONFIG.player.verticalDrag * (0.4 + viscosity) * dt);
     this.velocity.y *= vDrag;
 
+    const maxSp = CONFIG.player.maxSpeed * (1 + fleeBoost);
     const sp = this.velocity.length();
-    if (sp > CONFIG.player.maxSpeed) {
-      this.velocity.multiplyScalar(CONFIG.player.maxSpeed / sp);
+    if (sp > maxSp) {
+      this.velocity.multiplyScalar(maxSp / sp);
     }
 
     this.position.addScaledVector(this.velocity, dt);
@@ -136,6 +144,13 @@ export class Player {
 
     this.material.uniforms.uTime.value = this.t;
     this.material.uniforms.uEnergy.value = energyRatio;
+    // uHurt — тело гаснет/дрожит после урона; uToxin — ядовитое свечение
+    this.material.uniforms.uHurt.value = this.hurtSignal;
+    this.material.uniforms.uToxin.value = this.behavior.toxicity;
+    this.material.uniforms.uArmor.value = this.behavior.armor;
+
+    // hurtSignal затухает сам — диегетика: тело «заживает», никто не жмёт кнопки
+    this.hurtSignal = Math.max(0, this.hurtSignal - CONFIG.player.hurtRecovery * dt);
 
     return { sample, moving };
   }
@@ -147,6 +162,10 @@ export class Player {
   /** Урон от контакта с шипастым существом — диегетический сигнал (тело гаснет). */
   damage(amount: number) {
     this.energy = Math.max(0, this.energy - amount);
+    // armor гасит урон: чем больше нарабирован, тем меньше проходит
+    const blocked = 1 - this.behavior.armor * CONFIG.player.armorMitigation;
+    this.hurtSignal = Math.min(1, this.hurtSignal + amount * 0.04 * blocked);
+    return amount * blocked; // сколько реально прошло (для recentDamage в main)
   }
 
   /** Прямое восстановление полей поведения из сейва (без нарушения EMA-механики). */
@@ -165,6 +184,8 @@ const VERT = /* glsl */ `
   uniform float uFuzz;
   uniform float uStretch;
   uniform vec3 uStretchDir;
+  uniform float uArmor;
+  uniform float uHurt;
   varying vec3 vN;
   varying vec3 vView;
   varying float vDisp;
@@ -205,6 +226,13 @@ const VERT = /* glsl */ `
     float proj = dot(p, uStretchDir);
     p += uStretchDir * proj * uStretch;
 
+    // armor: сглаженная «скорлупа» — тело уплотняется и слегка набухает
+    p += n * uArmor * 0.10;
+
+    // hurt: тело дрожит от боли (высокочастотный шум по всей поверхности)
+    float hj = noise(p * 20.0 + uTime * 6.0);
+    p += n * (hj - 0.5) * uHurt * 0.10;
+
     vN = normalize(normalMatrix * normal);
     vView = (modelViewMatrix * vec4(p, 1.0)).xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
@@ -221,6 +249,8 @@ const FRAG = /* glsl */ `
   uniform float uEnergy;
   uniform float uTint;
   uniform float uFlash;
+  uniform float uHurt;
+  uniform float uToxin;
   uniform vec3 uPalette[16];
 
   void main() {
@@ -240,6 +270,12 @@ const FRAG = /* glsl */ `
     base = mix(base * 0.4, base, 1.0 - rim);
     base += vec3(0.25) * rim * (0.6 + 0.4 * sin(uTime * 4.0));
     base += vec3(1.0, 0.9, 0.6) * uFlash * 0.8;
+
+    // hurt: тело гаснет к тёмно-багровому — диегетический сигнал боли
+    base = mix(base, base * vec3(0.45, 0.12, 0.10), uHurt * 0.75);
+
+    // toxicity: ядовитое флюоресцентное марево по силиэту
+    base += vec3(0.35, 0.9, 0.25) * uToxin * rim * (0.5 + 0.5 * sin(uTime * 2.2));
 
     gl_FragColor = vec4(base, 1.0);
   }

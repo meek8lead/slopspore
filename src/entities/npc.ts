@@ -129,7 +129,7 @@ export class Npc {
     return this.spec.tier === 'large' ? CONFIG.npc.large.fleeRange : CONFIG.npc.fleeRange;
   }
 
-  update(dt: number, t: number, playerPos: THREE.Vector3): void {
+  update(dt: number, t: number, playerPos: THREE.Vector3, repelRadius = 0): void {
     // fade-in / fade-out работает даже когда !alive (растворение)
     if (this.fadingOut) {
       this.fade = Math.max(0, this.fade - dt / CONFIG.npc.fadeDuration);
@@ -160,11 +160,21 @@ export class Npc {
 
     const toPlayer = this.position.clone().sub(playerPos);
     const distP = toPlayer.length();
+    // токсичная аура игрока: мелкие существа обходят стороной (symbiosis-побочка —
+    // крупные не боятся яда, они слишком велики, чтобы реагировать на химтрейлер)
+    if (repelRadius > 0 && this.spec.tier === 'small' && distP < repelRadius) {
+      desired.add(toPlayer.normalize().multiplyScalar(CONFIG.npc.fleeStrength * 1.2));
+    }
     if (distP < this.fleeRange()) {
       const flee = toPlayer.normalize().multiplyScalar(CONFIG.npc.fleeStrength * 2);
       desired.add(flee);
-    } else if (distP < this.fleeRange() * 1.8) {
-      // лёгкое выравнивание по глубине игрока — чтобы погоня/убегание были 3D
+    } else if (
+      distP < this.fleeRange() * 1.8 &&
+      this.spec.tier === 'small' &&
+      playerPos.distanceTo(this.home) > CONFIG.npc.wanderRadius * 2
+    ) {
+      // крупняк не преследует — только мелкие любопытны; лёгкое выравнивание
+      // по глубине, чтобы погоня/убегание были настоящими 3D
       desired.y += (playerPos.y - this.position.y) * 0.15;
     }
 
@@ -258,11 +268,18 @@ export class NpcManager {
     this.npcs.push(new Npc(this.scene, this.palette, pos, spec));
   }
 
-  update(dt: number, t: number, playerPos: THREE.Vector3, localLevel: number, predatorDensity: number) {
+  update(
+    dt: number,
+    t: number,
+    playerPos: THREE.Vector3,
+    localLevel: number,
+    predatorDensity: number,
+    repelRadius = 0, // токсичная аура игрока (main.ts считает из behavior.toxicity)
+  ) {
     this.lastLocalLevel = localLevel;
 
     for (const npc of this.npcs) {
-      npc.update(dt, t, playerPos);
+      npc.update(dt, t, playerPos, repelRadius);
     }
     // чистка полностью растворившихся
     for (let i = this.npcs.length - 1; i >= 0; i--) {
