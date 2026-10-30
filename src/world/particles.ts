@@ -75,7 +75,8 @@ export class FoodField {
       center.z + Math.sin(angle) * radius,
     );
     const mat = new THREE.MeshLambertMaterial({
-      color: palette.colors[Math.floor(this.rng() * palette.colors.length)].clone(),
+      color: palette.colors[Math.floor(this.rng() * palette.colors.length)]
+        .clone().multiplyScalar(CONFIG.render.objectBoost),
       map: this.skin,
     });
     const mesh = new THREE.Mesh(this.geo, mat);

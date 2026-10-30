@@ -45,6 +45,7 @@ export class Player {
         uSymbiosis: { value: 0 },
         uPalette: { value: paletteArray },
         uSkin: { value: makeCellSkin(1234) }, // процедурная «кожа» клетки
+        uBoost: { value: CONFIG.render.objectBoost },
       },
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -204,6 +205,7 @@ const VERT = /* glsl */ `
   varying float vSpike;
   varying vec2 vUv;
   uniform sampler2D uSkin;
+  uniform float uBoost;
 
   float hash(vec3 p) { return fract(sin(dot(p, vec3(12.9898,78.233,45.164))) * 43758.5453); }
   float noise(vec3 p) {
@@ -282,7 +284,7 @@ const FRAG = /* glsl */ `
     base = mix(base, tint, 0.35);
 
     // процедурная кожа: мягкое умножение яркости (палитра сохраняется)
-    base *= 0.78 + 0.42 * texture2D(uSkin, vUv).r;
+    base *= (0.78 + 0.42 * texture2D(uSkin, vUv).r) * uBoost; // объекты ярче подложки
 
     base += vec3(vSpike * 1.5);
     base *= mix(0.35, 1.1, uEnergy);

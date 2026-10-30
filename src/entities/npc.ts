@@ -71,11 +71,12 @@ const NPC_FRAG = /* glsl */ `
   uniform vec3 uColor;
   uniform sampler2D uSkin;
   uniform float uAlpha;
+  uniform float uBoost;   // объекты ярче подложки
 
   void main() {
     float lit = 0.55 + 0.45 * max(dot(normalize(vN), vec3(0.3, 0.6, 0.7)), 0.0);
     float skin = texture2D(uSkin, vUv).r; // около-белая карта яркости
-    vec3 c = uColor * lit * (0.7 + 0.55 * skin) + vec3(vSpike * 1.2);
+    vec3 c = (uColor * lit * (0.7 + 0.55 * skin) + vec3(vSpike * 1.2)) * uBoost;
     gl_FragColor = vec4(c, uAlpha);
   }
 `;
@@ -116,6 +117,7 @@ export class Npc {
         uColor: { value: new THREE.Vector3(baseColor.r, baseColor.g, baseColor.b) },
         uAlpha: { value: 1 },
         uSkin: { value: skin },
+        uBoost: { value: CONFIG.render.objectBoost },
       },
       vertexShader: NPC_VERT,
       fragmentShader: NPC_FRAG,

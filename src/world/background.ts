@@ -28,7 +28,10 @@ export function createBackground(palette: Palette): THREE.Mesh {
     // Подложка — усреднённый цвет палитры (тёмный, приглушённый). Палитра
     // смешивается с ней малой долей: фон переливается мягко, без «запёкшейся»
     // радуги и без провала в чёрный.
-    const avg = palette.averageColor();
+    // Подложка — приглушённый тёмный тон, слегка окрашенный усреднённым цветом
+    // палитры. Радужность даёт только малая доля mixT соседних цветов — фон
+    // переливается медленно и мягко, объекты всегда ярче фона.
+    const avg = palette.averageColor().multiplyScalar(CONFIG.textures.bgBaseScale);
     const mixT = CONFIG.textures.bgMix;
     const bgDim = CONFIG.textures.bgDim; // фон темнее объектов → силуэты читаются
     for (let y = 0; y < H; y++) {

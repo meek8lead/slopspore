@@ -3,6 +3,8 @@ import { CONFIG } from './config';
 import { Pipeline } from './render/pipeline';
 import { Medium } from './world/medium';
 import { createBackground } from './world/background';
+import { createBackdrop } from './world/backdrop';
+import { makeMoteTexture } from './world/textures';
 import { FoodField } from './world/particles';
 import { EcoField } from './world/eco';
 import { Player } from './entities/player';
@@ -17,6 +19,31 @@ const { scene, camera, palette } = pipeline;
 const medium = new Medium(7);
 const background = createBackground(palette);
 scene.add(background);
+
+// Дальний «пол» — процедурная текстура, прибита к игроку по XZ: виден узор,
+// чувствуется скорость и глубина (фикс «пустого мира»).
+const backdrop = createBackdrop();
+scene.add(backdrop);
+
+// Взвесь — мягкие светлые mote-частицы вокруг игрока (дрейф + параллакс).
+const MOTE_COUNT = 160;
+const motePos = new Float32Array(MOTE_COUNT * 3);
+for (let i = 0; i < MOTE_COUNT; i++) {
+  motePos[i*3]   = (Math.random() - 0.5) * 60;
+  motePos[i*3+1] = (Math.random() - 0.5) * 40;
+  motePos[i*3+2] = (Math.random() - 0.5) * 60;
+}
+const moteGeo = new THREE.BufferGeometry();
+moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
+  size: 0.5,
+  map: makeMoteTexture(),
+  transparent: true,
+  opacity: 0.5,
+  depthWrite: false,
+  color: 0xffffff,
+}));
+scene.add(motes);
 
 const eco = new EcoField();
 const food = new FoodField(scene, palette, 99);
@@ -163,6 +190,8 @@ function updateCamera() {
   cameraTarget.copy(player.position);
   camera.lookAt(cameraTarget);
   background.position.copy(camera.position);
+  backdrop.position.set(player.position.x, CONFIG.player.elevationMin - 9, player.position.z);
+  motes.position.copy(player.position);
 
   // свет-«софтбокс»: луч из-за плеча камеры, привязан к игроку
   const off = new THREE.Vector3(5, 9, -7).applyQuaternion(camera.quaternion);
