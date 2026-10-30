@@ -167,6 +167,13 @@ export class FoodField {
     return gained;
   }
 
+  /** Позиции живого детрита — чтобы мелкие NPC слетались к падали (пищевая цепь). */
+  detritusPositions(out: THREE.Vector3[]): THREE.Vector3[] {
+    out.length = 0;
+    for (const d of this.detritus) if (d.alive) out.push(d.mesh.position);
+    return out;
+  }
+
   respawnDead(playerPos: THREE.Vector3, palette: Palette) {
     if (this.respawnTimer > 0) return; // темп задаёт density в update()
     for (const f of this.foods) {

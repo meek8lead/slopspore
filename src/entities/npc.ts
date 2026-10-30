@@ -129,7 +129,13 @@ export class Npc {
     return this.spec.tier === 'large' ? CONFIG.npc.large.fleeRange : CONFIG.npc.fleeRange;
   }
 
-  update(dt: number, t: number, playerPos: THREE.Vector3, repelRadius = 0): void {
+  update(
+    dt: number,
+    t: number,
+    playerPos: THREE.Vector3,
+    repelRadius = 0,
+    carrion: readonly THREE.Vector3[] = [], // живой детрит — пищевая цепь (M4)
+  ): void {
     // fade-in / fade-out работает даже когда !alive (растворение)
     if (this.fadingOut) {
       this.fade = Math.max(0, this.fade - dt / CONFIG.npc.fadeDuration);
@@ -164,6 +170,23 @@ export class Npc {
     // крупные не боятся яда, они слишком велики, чтобы реагировать на химтрейлер)
     if (repelRadius > 0 && this.spec.tier === 'small' && distP < repelRadius) {
       desired.add(toPlayer.normalize().multiplyScalar(CONFIG.npc.fleeStrength * 1.2));
+    }
+    // пищевая цепь: падальщики слетаются к детриту, если он ближе дома
+    if (this.spec.tier === 'small' && carrion.length > 0) {
+      let nearest = carrion[0];
+      let nd = nearest.distanceTo(this.position);
+      for (const c of carrion) {
+        const d2 = c.distanceTo(this.position);
+        if (d2 < nd) {
+          nd = d2;
+          nearest = c;
+        }
+      }
+      if (nd < CONFIG.npc.carrionRange) {
+        desired.add(
+          nearest.clone().sub(this.position).normalize().multiplyScalar(CONFIG.npc.carrionPull),
+        );
+      }
     }
     if (distP < this.fleeRange()) {
       const flee = toPlayer.normalize().multiplyScalar(CONFIG.npc.fleeStrength * 2);
@@ -275,11 +298,12 @@ export class NpcManager {
     localLevel: number,
     predatorDensity: number,
     repelRadius = 0, // токсичная аура игрока (main.ts считает из behavior.toxicity)
+    carrion: readonly THREE.Vector3[] = [], // живой детрит — пищевая цепь (M4)
   ) {
     this.lastLocalLevel = localLevel;
 
     for (const npc of this.npcs) {
-      npc.update(dt, t, playerPos, repelRadius);
+      npc.update(dt, t, playerPos, repelRadius, carrion);
     }
     // чистка полностью растворившихся
     for (let i = this.npcs.length - 1; i >= 0; i--) {

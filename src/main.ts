@@ -159,6 +159,7 @@ let localLevelCache = 0;
 let trueLevelCache = 0;
 let levelTimer = 0;
 let reactivity = { foodDensity: 1, predatorDensity: 1, difficulty: 1 };
+const carrionBuf: THREE.Vector3[] = []; // переиспользуемый буфер позиций детрита (без аллокаций/кадр)
 
 function frame(now: number) {
   const dt = Math.min(CONFIG.render.maxDt, (now - last) / 1000);
@@ -242,7 +243,8 @@ function frame(now: number) {
     behavior.toxicity * Math.sqrt(player.mass) * CONFIG.player.toxicityRadiusFactor;
 
   // NPCs: менеджер обновляет популяцию по localLevel и predatorDensity
-  npcManager.update(dt, t, player.position, localLevelCache, reactivity.predatorDensity, repelRadius);
+  const carrion = food.detritusPositions(carrionBuf); // детрит → мелкие NPC слетаются (пищевая цепь)
+  npcManager.update(dt, t, player.position, localLevelCache, reactivity.predatorDensity, repelRadius, carrion);
   for (const npc of npcManager.npcs) {
     if (!npc.alive) continue;
     const d = npc.position.distanceTo(player.position);

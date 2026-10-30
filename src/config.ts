@@ -74,6 +74,8 @@ export const CONFIG = {
     spawnMinRadius: 14,        // не спавним прямо в игроке
     spawnMaxRadius: 26,
     largeTierLevel: 0.3,       // localLevel выше порога → могут спавниться крупные
+    carrionRange: 12,          // мелкие существа чуют падаль в этом радиусе (пищевая цепь)
+    carrionPull: 1.4,          // сила притяжения к детриту (в единицах speed-вектора)
     large: {                   // tier 'large': медленные, жирные, опасные шипами
       size: 1.1,
       speed: 0.7,
