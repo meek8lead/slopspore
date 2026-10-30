@@ -38,6 +38,10 @@ export class FoodField {
   private density = 1;
   private tier = 0;
   private respawnTimer = 0;
+  // еда прибита к группе, которая следует за игроком (как скайбокс).
+  // Координаты еды — локальные относительно центра роя: игрок не может
+  // «улететь» от своего планктона быстрее, чем тот дрейфует (фикс пустого мира).
+  private lastPlayerPos = new THREE.Vector3();
 
   constructor(scene: THREE.Scene, palette: Palette, seed = 99) {
     this.rng = mulberry32(seed);
