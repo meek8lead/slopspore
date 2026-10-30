@@ -213,6 +213,38 @@ function frame(now: number) {
   food.setDensity(reactivity.foodDensity);
   food.setTier(localLevelCache);
 
+  // ── токсичная аура: отпугивает мелких существ (main считает из behavior.toxicity).
+  // Ветви симбиоза и яда конкурируют: «пушистые» отращивают больший личный ореол,
+  // который не даёт существам сблизиться — мир сам выбирает стратегию игрока.
+  const repelRadius =
+    behavior.toxicity * Math.sqrt(player.mass) * CONFIG.player.toxicityRadiusFactor;
+  const symbiosisCalmR =
+    behavior.symbiosis * Math.sqrt(player.mass) * CONFIG.player.toxinRepelBonus;
+
+  // ── симбиоз: последнее «мёртвое» поле behavior. Существо, которое НЕ боится
+  // игрока и держится рядом (не в токсичной ауре, не в радиусе поедания),
+  // даёт пассивный обмен энергией. Поле растёт только через tick-событие
+  // сосуществования + слабый pulse — никаких прямых накапок. ──
+  let symbiosisNear = false;
+  {
+    const personalR = Math.max(repelRadius, CONFIG.player.npcEatRange * 1.8);
+    for (const npc of npcManager.npcs) {
+      if (!npc.alive || npc.fadingOut) continue;
+      const d = npc.position.distanceTo(player.position);
+      if (d < personalR + npc.spec.size + 2.5 && d > CONFIG.player.npcEatRange) {
+        symbiosisNear = true;
+        break;
+      }
+    }
+  }
+  if (symbiosisNear) {
+    player.energy = Math.min(
+      CONFIG.player.baseEnergy,
+      player.energy + behavior.symbiosis * CONFIG.player.symbiosisHealRate * dt,
+    );
+    behavior.pulse('symbiosis', CONFIG.behavior.symbiosisTickPulse);
+  }
+
   // behavior tick
   behavior.tick(dt, {
     motility: moving,
@@ -222,6 +254,7 @@ function frame(now: number) {
     // evasion наполняется только реальным убеганием (вблизи угрозы с рывком) —
     // иначе поле осталось бы мёртвым; это событие, а не прямая накапка
     evasion: fleeBoost > 0 && moving,
+    symbiosis: symbiosisNear,
   });
 
   // eat food
@@ -238,13 +271,12 @@ function frame(now: number) {
     behavior.pulse('scavenging', CONFIG.behavior.foodPulse);
   }
 
-  // ── токсичная аура: отпугивает мелких существ (main считает из behavior.toxicity) ──
-  const repelRadius =
-    behavior.toxicity * Math.sqrt(player.mass) * CONFIG.player.toxicityRadiusFactor;
-
   // NPCs: менеджер обновляет популяцию по localLevel и predatorDensity
   const carrion = food.detritusPositions(carrionBuf); // детрит → мелкие NPC слетаются (пищевая цепь)
-  npcManager.update(dt, t, player.position, localLevelCache, reactivity.predatorDensity, repelRadius, carrion);
+  npcManager.update(
+    dt, t, player.position, localLevelCache, reactivity.predatorDensity,
+    Math.max(repelRadius, symbiosisCalmR), carrion, behavior.symbiosis,
+  );
   for (const npc of npcManager.npcs) {
     if (!npc.alive) continue;
     const d = npc.position.distanceTo(player.position);

@@ -41,6 +41,7 @@ export class Player {
         uHurt: { value: 0 },
         uToxin: { value: 0 },
         uArmor: { value: 0 },
+        uSymbiosis: { value: 0 },
         uPalette: { value: paletteArray },
       },
       vertexShader: VERT,
@@ -129,8 +130,11 @@ export class Player {
     // ── behavior-driven morphology ──────────────────────────────
     this.material.uniforms.uSpikes.value =
       this.behavior.predation * 0.7 + this.behavior.armor * 0.4;
+    // «пушок» — визуальный маркер симбиоза: существа читают его как «свой»
+    // (см. Npc.symbioticR — такие держатся ближе и не убегают в панике)
     this.material.uniforms.uFuzz.value =
-      this.behavior.chemosynthesis * 1.0 + this.behavior.symbiosis * 0.6;
+      Math.min(1, this.behavior.chemosynthesis * 1.0 + this.behavior.symbiosis * 0.6);
+    this.material.uniforms.uSymbiosis.value = this.behavior.symbiosis;
     this.material.uniforms.uTint.value = this.behavior.dominantIndex() / 11;
     this.material.uniforms.uFlash.value = this.mitosisFlash;
 
@@ -251,6 +255,7 @@ const FRAG = /* glsl */ `
   uniform float uFlash;
   uniform float uHurt;
   uniform float uToxin;
+  uniform float uSymbiosis;
   uniform vec3 uPalette[16];
 
   void main() {
@@ -276,6 +281,10 @@ const FRAG = /* glsl */ `
 
     // toxicity: ядовитое флюоресцентное марево по силиэту
     base += vec3(0.35, 0.9, 0.25) * uToxin * rim * (0.5 + 0.5 * sin(uTime * 2.2));
+
+    // symbiosis: тёплое мягкое свечение — «свой» сигнал для существ.
+    // Медленнее и добрее ядовитого; существа читают его как приглашение.
+    base += vec3(0.9, 0.75, 0.4) * uSymbiosis * rim * (0.4 + 0.6 * sin(uTime * 1.1));
 
     gl_FragColor = vec4(base, 1.0);
   }

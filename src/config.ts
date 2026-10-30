@@ -17,6 +17,7 @@ export const CONFIG = {
     foodPulse: 0.6,
     npcPulse: 0.9,
     armorHitPulse: 0.08,        // маленький импульс брони за каждый прошедший удар
+    symbiosisTickPulse: 0.05,   // слабый непрерывный импульс за сосуществование (событие-тик)
     detritusRatio: 0.45,       // доля энергии NPC, остающаяся в трупе
   },
   player: {
@@ -38,6 +39,8 @@ export const CONFIG = {
     hurtRecovery: 0.5,         // скорость затухания hurtSignal (сек⁻¹)
     toxicityRadiusFactor: 1.6, // радиус отпугивания мелких = size × фактор
     evasionSpeedBonus: 0.45,   // +к maxSpeed при evasion=1 (только в убегании — см. main)
+    symbiosisHealRate: 3.2,    // энергия/сек на symbiosis=1 вблизи «своих» (см. main)
+    toxinRepelBonus: 0.8,      // +к радиусу ауры на toxicity=1 — симбиоз дороже яду
     // growth / mitosis
     massStart: 1.0,
     massMin: 0.3,

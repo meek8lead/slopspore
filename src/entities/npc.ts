@@ -135,6 +135,7 @@ export class Npc {
     playerPos: THREE.Vector3,
     repelRadius = 0,
     carrion: readonly THREE.Vector3[] = [], // живой детрит — пищевая цепь (M4)
+    symbiosis = 0, // «пушистость» игрока: мелкие существа считывают её как «свой»
   ): void {
     // fade-in / fade-out работает даже когда !alive (растворение)
     if (this.fadingOut) {
@@ -189,8 +190,16 @@ export class Npc {
       }
     }
     if (distP < this.fleeRange()) {
-      const flee = toPlayer.normalize().multiplyScalar(CONFIG.npc.fleeStrength * 2);
-      desired.add(flee);
+      // симбиотичный игрок («пушистый») — не угроза: мелкие существа теряют
+      // страх и вместо паники держатся рядом. Это «свой» сигнал, не меню.
+      const symbioticR = this.spec.tier === 'small' ? this.fleeRange() * symbiosis : 0;
+      if (distP < symbioticR) {
+        // мягкое любопытство: слегка притормаживаем побег, тянемся к соседу
+        desired.add(toPlayer.clone().normalize().multiplyScalar(-0.35));
+      } else {
+        const flee = toPlayer.normalize().multiplyScalar(CONFIG.npc.fleeStrength * 2);
+        desired.add(flee);
+      }
     } else if (
       distP < this.fleeRange() * 1.8 &&
       this.spec.tier === 'small' &&
@@ -299,11 +308,12 @@ export class NpcManager {
     predatorDensity: number,
     repelRadius = 0, // токсичная аура игрока (main.ts считает из behavior.toxicity)
     carrion: readonly THREE.Vector3[] = [], // живой детрит — пищевая цепь (M4)
+    symbiosis = 0, // «пушистость» игрока — мелкие существа теряют страх (симбиоз)
   ) {
     this.lastLocalLevel = localLevel;
 
     for (const npc of this.npcs) {
-      npc.update(dt, t, playerPos, repelRadius, carrion);
+      npc.update(dt, t, playerPos, repelRadius, carrion, symbiosis);
     }
     // чистка полностью растворившихся
     for (let i = this.npcs.length - 1; i >= 0; i--) {
