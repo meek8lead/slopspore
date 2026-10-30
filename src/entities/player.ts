@@ -77,7 +77,9 @@ export class Player {
     const vDrag = Math.exp(-CONFIG.player.verticalDrag * (0.4 + viscosity) * dt);
     this.velocity.y *= vDrag;
 
-    const maxSp = CONFIG.player.maxSpeed * (1 + fleeBoost);
+    // оседлость — плата за «прирастание»: тяжёлое медленное тело (sessility-ветка)
+    const sessilityPenalty = 1 - this.behavior.sessility * CONFIG.player.sessilitySpeedFactor;
+    const maxSp = CONFIG.player.maxSpeed * (1 + fleeBoost) * sessilityPenalty;
     const sp = this.velocity.length();
     if (sp > maxSp) {
       this.velocity.multiplyScalar(maxSp / sp);
@@ -135,7 +137,10 @@ export class Player {
     this.material.uniforms.uFuzz.value =
       Math.min(1, this.behavior.chemosynthesis * 1.0 + this.behavior.symbiosis * 0.6);
     this.material.uniforms.uSymbiosis.value = this.behavior.symbiosis;
-    this.material.uniforms.uTint.value = this.behavior.dominantIndex() / 11;
+    // доминантная ветка задаёт оттенок; фотосинтез слегка сдвигает его к «свету»
+    const photo = this.behavior.photosynthesis;
+    this.material.uniforms.uTint.value =
+      this.behavior.dominantIndex() / 11 + (photo > 0.02 ? photo * 0.18 : 0);
     this.material.uniforms.uFlash.value = this.mitosisFlash;
 
     const speedRatio = Math.min(1, this.velocity.length() / CONFIG.player.maxSpeed);

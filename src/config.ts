@@ -41,6 +41,11 @@ export const CONFIG = {
     evasionSpeedBonus: 0.45,   // +к maxSpeed при evasion=1 (только в убегании — см. main)
     symbiosisHealRate: 3.2,    // энергия/сек на symbiosis=1 вблизи «своих» (см. main)
     toxinRepelBonus: 0.8,      // +к радиусу ауры на toxicity=1 — симбиоз дороже яду
+    // M4-углубление: фотосинтез/хемосинтез — не просто тики поведения, а питание
+    photoGain: 5.5,            // энергия/сек при photosynthesis=1 в светлой зоне
+    chemoGain: 3.0,            // энергия/сек при chemosynthesis=1 в химной зоне
+    autotrophCap: 0.75,        // автотрофы берут энергию не выше этого доли базы
+    sessilitySpeedFactor: 0.75, // макс. потеря скорости при sessility=1 (оседлость)
     // growth / mitosis
     massStart: 1.0,
     massMin: 0.3,

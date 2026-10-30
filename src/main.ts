@@ -186,10 +186,24 @@ function frame(now: number) {
 
   const { sample, moving } = player.update(dt, input, medium, fleeBoost);
 
-  // passive chemosynthesis
+  // ── пассивное питание: базовый химотрейл + автотрофия (M4-углубление) ──
+  // photo/chemo-поля, нарашенные поведением, превращаются в реальный доход
+  // энергии — но только в соответствующих зонах среды и с потолком autotrophCap.
+  // Растение-стратегия медленнее и не делится быстро (энергия упирается в потолок),
+  // хищник остаётся быстрым путём к митозу. Никаких меню — только следствия.
+  const energyRatioNow = player.energy / CONFIG.player.baseEnergy;
+  let passiveGain = sample.chemEnergy * CONFIG.player.passiveGain;
+  if (energyRatioNow < CONFIG.player.autotrophCap) {
+    if (sample.luminosity > 0.6) {
+      passiveGain += behavior.photosynthesis * CONFIG.player.photoGain * ((sample.luminosity - 0.6) / 0.4);
+    }
+    if (sample.chemEnergy > 0.5) {
+      passiveGain += behavior.chemosynthesis * CONFIG.player.chemoGain * ((sample.chemEnergy - 0.5) / 0.5);
+    }
+  }
   player.energy = Math.min(
-    CONFIG.player.baseEnergy,
-    player.energy + sample.chemEnergy * CONFIG.player.passiveGain * dt,
+    CONFIG.player.baseEnergy * CONFIG.player.autotrophCap,
+    player.energy + passiveGain * dt,
   );
 
   // ── eco: уровень вокруг игрока (обновляем редко — это шум, он медленный) ──
@@ -238,6 +252,7 @@ function frame(now: number) {
     }
   }
   if (symbiosisNear) {
+    // симбиоз — единственный способ пробить автотрофный потолок: «свои» делятся
     player.energy = Math.min(
       CONFIG.player.baseEnergy,
       player.energy + behavior.symbiosis * CONFIG.player.symbiosisHealRate * dt,
