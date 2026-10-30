@@ -9,6 +9,7 @@ interface Food {
   energy: number;
   alive: boolean;
   baseEnergy: number;
+  hue: number; // оттенок куска (индекс палитры / 16) — виден в «животе» игрока
 }
 
 interface Detritus {
@@ -16,6 +17,7 @@ interface Detritus {
   energy: number;
   life: number; // сек до оседания
   alive: boolean;
+  hue: number;
 }
 
 /**
@@ -92,6 +94,7 @@ export class FoodField {
       energy: 14,
       alive: true,
       baseEnergy: 14 + Math.floor(this.rng() * CONFIG.food.energySpread),
+      hue: Math.floor(this.rng() * 16) / 16, // оттенок кусочка — перекликается с палитрой
     };
     this.applyTier(f);
     this.foods.push(f);
@@ -105,6 +108,7 @@ export class FoodField {
       for (const d of this.detritus) if (d.life < oldest.life) oldest = d;
       oldest.mesh.position.copy(pos);
       oldest.energy = energy;
+      oldest.hue = Math.floor(this.rng() * 16) / 16;
       oldest.life = CONFIG.food.detritusLifetime;
       oldest.alive = true;
       oldest.mesh.visible = true;
@@ -128,6 +132,7 @@ export class FoodField {
       energy,
       life: CONFIG.food.detritusLifetime,
       alive: true,
+      hue: Math.floor(this.rng() * 16) / 16,
     });
   }
 
@@ -178,31 +183,36 @@ export class FoodField {
     this.respawnTimer -= dt * this.density;
   }
 
-  tryEat(pos: THREE.Vector3, range: number): number {
+  /** Поедание еды. Возвращает энергию и оттенок последнего куска (для «живота»). */
+  tryEat(pos: THREE.Vector3, range: number): { gained: number; hue: number } {
     let gained = 0;
+    let hue = -1;
     for (const f of this.foods) {
       if (!f.alive) continue;
       if (f.mesh.position.distanceTo(pos) < range) {
         f.alive = false;
         f.mesh.visible = false;
         gained += f.energy;
+        hue = f.hue;
       }
     }
-    return gained;
+    return { gained, hue };
   }
 
   /** Подбор детрита. Возвращает энергию (меньше живого NPC) или 0. */
-  tryEatDetritus(pos: THREE.Vector3, range: number): number {
+  tryEatDetritus(pos: THREE.Vector3, range: number): { gained: number; hue: number } {
     let gained = 0;
+    let hue = -1;
     for (const d of this.detritus) {
       if (!d.alive) continue;
       if (d.mesh.position.distanceTo(pos) < range) {
         d.alive = false;
         d.mesh.visible = false;
         gained += d.energy;
+        hue = d.hue;
       }
     }
-    return gained;
+    return { gained, hue };
   }
 
   /** Позиции живого детрита — чтобы мелкие NPC слетались к падали (пищевая цепь). */

@@ -21,6 +21,9 @@ export class Player {
   // диегетический сигнал недавнего урона (0..1): тело гаснет и дрожит.
   // Не накапливается напрямую в behavior — только через pulse() из main.ts.
   hurtSignal = 0;
+  // «желудок»: сколько переваривается (0..1) и оттенок последнего куска
+  digestAmount = 0;
+  foodHue = 0.5;
 
   constructor(
     scene: THREE.Scene,
@@ -43,6 +46,9 @@ export class Player {
         uToxin: { value: 0 },
         uArmor: { value: 0 },
         uSymbiosis: { value: 0 },
+        // «желудок»: сколько только что съедено (0..1) и оттенок перевариваемой пищи
+        uDigest: { value: 0 },
+        uFoodHue: { value: 0.5 },
         uPalette: { value: paletteArray },
         uSkin: { value: makeCellSkin(1234) }, // процедурная «кожа» клетки
         uBoost: { value: CONFIG.render.objectBoost },
@@ -161,14 +167,31 @@ export class Player {
     this.material.uniforms.uToxin.value = this.behavior.toxicity;
     this.material.uniforms.uArmor.value = this.behavior.armor;
 
+    // ── digestion: только что съеденное раздувает тело и светится изнутри ──
+    this.digestAmount = Math.max(0, this.digestAmount - CONFIG.player.digestRate * dt);
+    this.material.uniforms.uDigest.value = this.digestAmount;
+    this.material.uniforms.uFoodHue.value = this.foodHue;
+
     // hurtSignal затухает сам — диегетика: тело «заживает», никто не жмёт кнопки
     this.hurtSignal = Math.max(0, this.hurtSignal - CONFIG.player.hurtRecovery * dt);
 
     return { sample, moving };
   }
 
-  feed(amount: number) {
+  feed(amount: number, hue = -1) {
     this.energy = Math.min(CONFIG.player.baseEnergy, this.energy + amount);
+    // порция еды раздувает «живот» — видно, что клетка только что ела
+    const portion = Math.min(
+      CONFIG.player.digestMax,
+      this.digestAmount + amount * CONFIG.player.digestPerEnergy,
+    );
+    this.digestAmount = portion;
+    if (hue >= 0) this.foodHue = hue;
+  }
+
+  /** Случайный оттенок палитры для съеденного куска (еда/детрит/NPC). */
+  static randomFoodHue(): number {
+    return Math.floor(Math.random() * 16) / 16;
   }
 
   /** Урон от контакта с шипастым существом — диегетический сигнал (тело гаснет). */
@@ -198,12 +221,13 @@ const VERT = /* glsl */ `
   uniform vec3 uStretchDir;
   uniform float uArmor;
   uniform float uHurt;
+  uniform float uDigest;   // сколько переваривается (0..1) — раздувает «живот»
   varying vec2 vUv;
   varying vec3 vN;
   varying vec3 vView;
   varying float vDisp;
   varying float vSpike;
-  varying vec2 vUv;
+  varying float vBulge;    // сторона тела, где выпирает «живот»
   uniform sampler2D uSkin;
   uniform float uBoost;
 
@@ -249,9 +273,16 @@ const VERT = /* glsl */ `
     float hj = noise(p * 20.0 + uTime * 6.0);
     p += n * (hj - 0.5) * uHurt * 0.10;
 
+    // digestion: полный живот слегка выпирает с одной стороны — асимметричная
+    // «шишка», которая медленно обходит тело (перистальтика)
+    vec3 bdir = normalize(vec3(sin(uTime * 0.7), 0.3, cos(uTime * 0.7)));
+    float bulge = smoothstep(0.2, 1.0, dot(n, bdir));
+    p += n * uDigest * (0.06 + 0.08 * bulge);
+
     vN = normalize(normalMatrix * normal);
     vView = (modelViewMatrix * vec4(p, 1.0)).xyz;
     vUv = uv;
+    vBulge = bulge;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
 `;
@@ -269,6 +300,9 @@ const FRAG = /* glsl */ `
   uniform float uHurt;
   uniform float uToxin;
   uniform float uSymbiosis;
+  uniform float uDigest;   // сколько переваривается (0..1)
+  uniform float uFoodHue;  // оттенок последнего куска (индекс палитры / 16)
+  varying float vBulge;    // сторона тела, где выпирает «живот»
   uniform vec3 uPalette[16];
 
   void main() {
@@ -301,6 +335,15 @@ const FRAG = /* glsl */ `
     // symbiosis: тёплое мягкое свечение — «свой» сигнал для существ.
     // Медленнее и добрее ядовитого; существа читают его как приглашение.
     base += vec3(0.9, 0.75, 0.4) * uSymbiosis * rim * (0.4 + 0.6 * sin(uTime * 1.1));
+
+    // digestion: перевариваемый кусок виден сквозь тело — светящееся пятно
+    // оттенка съеденного, медленно «варится» (пульсирует) и гаснет по мере усвоения
+    int fIdx = int(clamp(uFoodHue * 16.0, 0.0, 15.0));
+    vec3 foodCol = uPalette[fIdx];
+    float blob = vBulge * smoothstep(0.08, 0.35, uDigest);
+    blob *= 0.75 + 0.25 * sin(uTime * 3.0 + vUv.y * 12.0); // перистальтика
+    base = mix(base, foodCol * 1.25, blob * 0.55);
+    base += foodCol * blob * 0.18; // лёгкое внутреннее свечение наружу
 
     gl_FragColor = vec4(base, 1.0);
   }

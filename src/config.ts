@@ -59,6 +59,10 @@ export const CONFIG = {
     npcEatRange: 1.3,
     armorMitigation: 0.7,      // макс. доля гашения урона при armor=1
     hurtRecovery: 0.5,         // скорость затухания hurtSignal (сек⁻¹)
+    // ── digestion: переваривание видно сквозь тело (диегетика, без HUD) ──
+    digestPerEnergy: 0.012,    // +к «желудку» за единицу съеденной энергии
+    digestMax: 0.9,            // потолок раздутия живота
+    digestRate: 0.06,          // скорость усвоения (сек⁻¹): полный живот ~15 сек
     toxicityRadiusFactor: 1.6, // радиус отпугивания мелких = size × фактор
     evasionSpeedBonus: 0.45,   // +к maxSpeed при evasion=1 (только в убегании — см. main)
     symbiosisHealRate: 3.2,    // энергия/сек на symbiosis=1 вблизи «своих» (см. main)

@@ -345,25 +345,25 @@ function frame(now: number) {
 
   // eat food
   const eaten = food.tryEat(player.position, CONFIG.player.eatRange);
-  if (eaten > 0) {
-    player.feed(eaten);
+  if (eaten.gained > 0) {
+    player.feed(eaten.gained, eaten.hue); // оттенок — что перевариваем (видно сквозь тело)
     behavior.pulse('herbivory', CONFIG.behavior.foodPulse);
-    foodCarry += eaten;       // «носим» еду — можно покормить симбионта
+    foodCarry += eaten.gained;       // «носим» еду — можно покормить симбионта
     lastFoodRelief = Math.min(
       CONFIG.player.foodEnergyCap - CONFIG.player.autotrophCap,
-      lastFoodRelief + eaten / CONFIG.player.baseEnergy,
+      lastFoodRelief + eaten.gained / CONFIG.player.baseEnergy,
     );
   }
 
   // scavenging: подбор детрита (меньше энергии, чем живой NPC)
   const scav = food.tryEatDetritus(player.position, CONFIG.player.eatRange);
-  if (scav > 0) {
-    player.feed(scav);
+  if (scav.gained > 0) {
+    player.feed(scav.gained, scav.hue);
     behavior.pulse('scavenging', CONFIG.behavior.foodPulse);
-    foodCarry += scav * 0.5;
+    foodCarry += scav.gained * 0.5;
     lastFoodRelief = Math.min(
       CONFIG.player.foodEnergyCap - CONFIG.player.autotrophCap,
-      lastFoodRelief + scav * 0.5 / CONFIG.player.baseEnergy,
+      lastFoodRelief + scav.gained * 0.5 / CONFIG.player.baseEnergy,
     );
   }
 
@@ -413,7 +413,8 @@ function frame(now: number) {
     if (d < CONFIG.player.npcEatRange) {
       // съеден: энергия из spec, труп остаётся только если его «догрызают» позже
       npc.kill();
-      player.feed(npc.spec.energy);
+      // оттенок съеденного существа — «кусок» виден в животе, цвет совпадает с жертвой
+      player.feed(npc.spec.energy, npc.spec.colorSeed);
       behavior.pulse('predation', CONFIG.behavior.npcPulse);
       food.addDetritus(
         npc.position.clone(),
