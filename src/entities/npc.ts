@@ -479,6 +479,12 @@ export class NpcManager {
     c.multiplyScalar(1 / this.npcs.length);
     // уже рядом с игроком? ничего не делаем
     if (c.distanceTo(to) < CONFIG.npc.recenterTrigger) return;
+    // НО: если сами существа далеко от игрока — переносим их тоже.
+    // Иначе при быстром бегстве рой «не догоняет» (скорость NPC 0.7–1.5 против
+    // 8 у игрока) и мир становится пустым, хотя дома уже переехали.
+    const farFromPlayer = this.npcs.some(
+      (n) => n.alive && !n.fadingOut && n.position.distanceTo(to) > CONFIG.npc.recenterTrigger * 1.6,
+    );
     // новые дома — вокруг позиции игрока, со случайным направлением/радиусом
     let i = 0;
     for (const n of this.npcs) {
@@ -491,8 +497,12 @@ export class NpcManager {
         to.y + (Math.random() - 0.5) * 6,
         to.z + Math.sin(angle) * r,
       );
-      // самих существ НЕ телепортируем — они сами приплывут к новым домам
-      // (телепорт на большие дистанции выглядит как «мигание» мира)
+      // если рой сильно отстал — телепортируем к новому дому (иначе он будет
+      // догонять вечность; в «пустоте» без ориентиров это незаметно)
+      if (farFromPlayer && n.alive && !n.fadingOut) {
+        n.position.copy(n.home);
+        n.mesh.position.copy(n.position);
+      }
       void i;
       i++;
     }
