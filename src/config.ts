@@ -21,6 +21,11 @@ export const CONFIG = {
   player: {
     accel: 14,
     maxSpeed: 8,
+    verticalAccel: 10,         // подъём/опускание (Q/E или Space/Shift)
+    verticalMaxSpeed: 5,
+    verticalDrag: 2.6,
+    elevationMin: -14,         // границы «тощи» по вертикали
+    elevationMax: 14,
     drag: 2.4,
     baseEnergy: 100,
     drainIdle: 1.2,
@@ -42,6 +47,8 @@ export const CONFIG = {
     distance: 9,
     height: 3.5,
     followLerp: 0.12,
+    pitchLerp: 0.08,           // наклон камеры при подъёме/опускании
+    maxPitch: 1.15,            // рад — почти сверху, но не gimbal-локап
   },
   world: {
     foodCount: 48,

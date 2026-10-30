@@ -50,34 +50,98 @@ void worldSeed;
 const debug = new DebugUI();
 
 // ── input ─────────────────────────────────────────────────────────────────
-const keys = new Set<string>();
-window.addEventListener('keydown', (e) => keys.add(e.key.toLowerCase()));
-window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+// Бинды по физическим кодам клавиш (KeyboardEvent.code): работают при любой
+// раскладке — РУС/EN/DE и т.д. 'KeyW' — это тот же клавишный домик, где бы
+// игрок ни сидел. e.key оставляем как резервный путь для стрелок и пробела.
+type Action = 'forward' | 'back' | 'left' | 'right' | 'up' | 'down';
+
+const KEY_BINDS: Record<string, Action> = {
+  // movement (physical layout independent)
+  KeyW: 'forward',
+  KeyS: 'back',
+  KeyA: 'left',
+  KeyD: 'right',
+  // vertical: подъём / опускание
+  Space: 'up',
+  ShiftLeft: 'down',
+  ShiftRight: 'down',
+};
+
+// резервные бинды по символу — Q/E не зависят от раскладки, но на экранных
+// клавиатурах code может отсутствовать; стрелки — универсальны
+const CHAR_FALLBACK: Record<string, Action> = {
+  q: 'up',
+  e: 'down',
+  arrowup: 'up',
+  arrowdown: 'down',
+  arrowleft: 'left',
+  arrowright: 'right',
+  w: 'forward',
+  s: 'back',
+  a: 'left',
+  d: 'right',
+};
+
+const actions = new Set<Action>();
+
+function bindEvent(e: KeyboardEvent, on: boolean) {
+  const act =
+    KEY_BINDS[e.code] ??
+    (e.key ? CHAR_FALLBACK[e.key.toLowerCase()] : undefined);
+  if (!act) return;
+  if (on) actions.add(act);
+  else actions.delete(act);
+  // пробел по умолчанию скроллит страницу / кликает фокус — глушим
+  if (e.code === 'Space' || e.key === ' ') e.preventDefault();
+}
+
+window.addEventListener('keydown', (e) => bindEvent(e, true));
+window.addEventListener('keyup', (e) => bindEvent(e, false));
+// при переключении раскладки active keys «залипают» — чистим всё
+window.addEventListener('blur', () => actions.clear());
+window.addEventListener('focus', () => actions.clear());
 
 function readInput() {
   let x = 0;
   let y = 0;
-  if (keys.has('w') || keys.has('arrowup')) y -= 1;
-  if (keys.has('s') || keys.has('arrowdown')) y += 1;
-  if (keys.has('a') || keys.has('arrowleft')) x -= 1;
-  if (keys.has('d') || keys.has('arrowright')) x += 1;
+  let v = 0; // вертикаль: +1 вверх, -1 вниз
+  if (actions.has('forward')) y -= 1;
+  if (actions.has('back')) y += 1;
+  if (actions.has('left')) x -= 1;
+  if (actions.has('right')) x += 1;
+  if (actions.has('up')) v += 1;
+  if (actions.has('down')) v -= 1;
   const len = Math.hypot(x, y);
   if (len > 1) {
     x /= len;
     y /= len;
   }
-  return { x, y };
+  return { x, y, v };
 }
 
 // ── camera ────────────────────────────────────────────────────────────────
 const cameraTarget = new THREE.Vector3();
 const cameraDesired = new THREE.Vector3();
 
+// наклон камеры: при подъёме/опускании игрок «выныривает» из плоскости —
+// камера плавно переключается с горизонтального облёта на вид сверху.
+// lerp-привязка сохранена (не жёсткая) — ощущение «тело пухнет» не трогаем.
+let camPitch = 0; // 0 = горизонтальный облёт, → maxPitch = почти сверху
+
 function updateCamera() {
   const dist = CONFIG.camera.distance * Math.cbrt(player.mass);
-  cameraDesired
-    .copy(player.position)
-    .add(new THREE.Vector3(0, CONFIG.camera.height, dist));
+  const pitchTarget = Math.min(
+    CONFIG.camera.maxPitch,
+    Math.abs(player.position.y) / 8 + Math.abs(player.velocity.y) * 0.12,
+  );
+  camPitch += (pitchTarget - camPitch) * CONFIG.camera.pitchLerp;
+  const cp = Math.cos(camPitch);
+  const sp = Math.sin(camPitch);
+  cameraDesired.set(
+    player.position.x,
+    player.position.y + dist * sp,
+    player.position.z + dist * cp,
+  );
   camera.position.lerp(cameraDesired, CONFIG.camera.followLerp);
   cameraTarget.copy(player.position);
   camera.lookAt(cameraTarget);

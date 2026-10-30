@@ -46,7 +46,7 @@ export class Player {
 
   update(
     dt: number,
-    input: { x: number; y: number },
+    input: { x: number; y: number; v: number },
     medium: Medium,
   ): { sample: ReturnType<Medium['sample']>; moving: boolean } {
     this.t += dt;
@@ -57,8 +57,17 @@ export class Player {
     this.velocity.x += input.x * accel * dt;
     this.velocity.z += input.y * accel * dt;
 
+    // вертикаль: подъём/опускание — та же вязкость держит, отдельный лимит скорости
+    const vAccel = CONFIG.player.verticalAccel / (0.4 + viscosity * 1.8);
+    this.velocity.y += input.v * vAccel * dt;
+    if (Math.abs(this.velocity.y) > CONFIG.player.verticalMaxSpeed) {
+      this.velocity.y = Math.sign(this.velocity.y) * CONFIG.player.verticalMaxSpeed;
+    }
+
     const drag = Math.exp(-CONFIG.player.drag * (0.4 + viscosity) * dt);
     this.velocity.multiplyScalar(drag);
+    const vDrag = Math.exp(-CONFIG.player.verticalDrag * (0.4 + viscosity) * dt);
+    this.velocity.y *= vDrag;
 
     const sp = this.velocity.length();
     if (sp > CONFIG.player.maxSpeed) {
@@ -66,6 +75,14 @@ export class Player {
     }
 
     this.position.addScaledVector(this.velocity, dt);
+    // границы по высоте — «тоща» пустоты конечна по вертикали
+    this.position.y = Math.min(
+      CONFIG.player.elevationMax,
+      Math.max(CONFIG.player.elevationMin, this.position.y),
+    );
+    if (this.position.y === CONFIG.player.elevationMax || this.position.y === CONFIG.player.elevationMin) {
+      this.velocity.y = 0;
+    }
 
     const moving = sp > 0.15;
     const drain = moving ? CONFIG.player.drainMove : CONFIG.player.drainIdle;

@@ -153,6 +153,8 @@ export class Npc {
       Math.cos(this.phase * 0.9),
     ).multiplyScalar(CONFIG.npc.wanderRadius);
 
+    // M4: существа живут в той же толще, что и игрок — не «пол» на y=0.
+    // home.y из сейва/спавна задаёт их глубину, блуждание слегка её дышит.
     const target = this.home.clone().add(wander);
     const desired = target.sub(this.position);
 
@@ -161,6 +163,9 @@ export class Npc {
     if (distP < this.fleeRange()) {
       const flee = toPlayer.normalize().multiplyScalar(CONFIG.npc.fleeStrength * 2);
       desired.add(flee);
+    } else if (distP < this.fleeRange() * 1.8) {
+      // лёгкое выравнивание по глубине игрока — чтобы погоня/убегание были 3D
+      desired.y += (playerPos.y - this.position.y) * 0.15;
     }
 
     if (desired.lengthSq() > 0.0001) {
