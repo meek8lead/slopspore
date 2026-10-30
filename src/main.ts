@@ -35,6 +35,11 @@ const npcManager = new NpcManager(scene, palette);
 
 // ── сериализация состояния (правило: с этого момента обязательно) ─────────
 let worldSeed = 7;
+// «Носимая» еда в теле игрока и свежая сытость — поднимают потолок пассивного
+// восстановления выше автотрофного (путь к митозу для травоядных/падальщиков).
+// Объявлены ДО загрузки сейва, чтобы восстановить их из сохранённого состояния.
+let foodCarry = 0;
+let lastFoodRelief = 0;
 const saved = loadState();
 if (saved) {
   player.ecoLevel = saved.ecoLevel;
@@ -47,6 +52,9 @@ if (saved) {
   // сейва мир остаётся позади и экран пуст. Переносим экосистему к игроку.
   npcManager.recenter(player.position);
   npcManager.restore(saved.npcs, player.position);
+  // необязательные поля (версии сейва могли не иметь) — с дефолтами
+  foodCarry = saved.foodCarry ?? 0;
+  lastFoodRelief = saved.lastFoodRelief ?? 0;
   eco.restoreReactivity(
     saved.reactivity.food,
     saved.reactivity.predator,
@@ -167,10 +175,6 @@ let last = performance.now();
 let t = 0;
 let recentDamage = 0;        // EMA недавнего урона (0..1)
 let saveTimer = CONFIG.save.interval;
-// «Носимая» еда в теле игрока и свежая сытость — поднимают потолок пассивного
-// восстановления выше автотрофного (путь к митозу для травоядных/падальщиков).
-let foodCarry = 0;
-let lastFoodRelief = 0;
 
 // кэш локального уровня — обновляем не каждый кадр, спавнерам хватает раз в ~0.5с
 let localLevelCache = 0;
@@ -417,6 +421,8 @@ function frame(now: number) {
         predator: reactivity.predatorDensity,
         difficulty: reactivity.difficulty,
       },
+      foodCarry,
+      lastFoodRelief,
       seed: worldSeed,
     };
     saveState(state);

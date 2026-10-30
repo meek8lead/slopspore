@@ -21,6 +21,9 @@ export interface GameState {
   behavior: Record<string, number>;
   npcs: NpcSaveState[];
   reactivity: { food: number; predator: number; difficulty: number };
+  // внутриклеточный запас еды и «свежая сытость» (путь травоядных к митозу)
+  foodCarry: number;
+  lastFoodRelief: number;
   seed: number;
 }
 
