@@ -25,18 +25,31 @@ export function createBackground(palette: Palette): THREE.Mesh {
   const paint = () => {
     const img = ctx.createImageData(W, H);
     const cols = palette.colors;
+    // Подложка — усреднённый цвет палитры (тёмный, приглушённый). Палитра
+    // смешивается с ней малой долей: фон переливается мягко, без «запёкшейся»
+    // радуги и без провала в чёрный.
+    const avg = palette.averageColor();
+    const mixT = CONFIG.textures.bgMix;
+    const bgDim = CONFIG.textures.bgDim; // фон темнее объектов → силуэты читаются
     for (let y = 0; y < H; y++) {
       // вертикальный градиент «небо→пол», как в старых edu-сценах
       const up = 1 - y / (H - 1);
-      const shade = 0.45 + 0.55 * up;
+      const shade = (0.8 + 0.35 * up) * bgDim;
       for (let x = 0; x < W; x++) {
         const n = noise[y * W + x];
-        const idx = Math.min(cols.length - 1, Math.floor(n * cols.length));
-        const c = cols[idx];
+        // два соседних индекса + дробное смешение → плавные переходы вместо полос
+        const f = n * (cols.length - 1);
+        const i0 = Math.floor(f);
+        const i1 = Math.min(cols.length - 1, i0 + 1);
+        const fr = f - i0;
+        const a = cols[i0], b = cols[i1];
+        const r = (avg.r + (a.r + (b.r - a.r) * fr - avg.r) * mixT) * shade;
+        const g = (avg.g + (a.g + (b.g - a.g) * fr - avg.g) * mixT) * shade;
+        const bl = (avg.b + (a.b + (b.b - a.b) * fr - avg.b) * mixT) * shade;
         const i = (y * W + x) * 4;
-        img.data[i] = Math.round(c.r * 255 * shade);
-        img.data[i + 1] = Math.round(c.g * 255 * shade);
-        img.data[i + 2] = Math.round(c.b * 255 * shade);
+        img.data[i] = Math.round(Math.min(1, r) * 255);
+        img.data[i + 1] = Math.round(Math.min(1, g) * 255);
+        img.data[i + 2] = Math.round(Math.min(1, bl) * 255);
         img.data[i + 3] = 255;
       }
     }

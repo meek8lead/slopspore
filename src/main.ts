@@ -22,11 +22,11 @@ const eco = new EcoField();
 const food = new FoodField(scene, palette, 99);
 const behavior = new BehaviorProfile(CONFIG.behavior.rate, CONFIG.behavior.pulseDecay);
 const player = new Player(scene, palette.uniformArray, behavior);
-scene.add(new THREE.AmbientLight(0xffffff, 0.55)); // приглушён — объём даёт keyLight
+scene.add(new THREE.AmbientLight(0xffffff, 0.7)); // приглушён — объём даёт keyLight
 
 // «Софтбокс»-свет в стиле старых edu-рендереров: следует за игроком
 // (направление задаём от камеры — сцена освещена одинаково где угодно).
-const keyLight = new THREE.DirectionalLight(0xffffff, 0.85);
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.25);
 scene.add(keyLight);
 scene.add(keyLight.target);
 
