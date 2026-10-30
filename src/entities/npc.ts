@@ -432,7 +432,7 @@ export class NpcManager {
       const spec: NpcSpec = s.tier === 'large' ? largeSpec() : { ...SMALL_SPEC };
       const home = new THREE.Vector3(s.hx, s.hy, s.hz);
       if (anchorShift) home.add(anchorShift);
-      const npc = new Npc(this.scene, this.palette, home, spec);
+      const npc = new Npc(this.scene, this.palette, home, this.skinFor(spec), spec);
       npc.position.set(s.x, s.y, s.z);
       if (anchorShift) {
         npc.position.add(anchorShift);
