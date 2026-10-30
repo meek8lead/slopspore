@@ -4,7 +4,6 @@ export default defineConfig({
   base: './',
   build: { 
     target: 'es2022', 
-    assetsInlineLimit: 0,
-    outDir: 'docs' 
+    assetsInlineLimit: 0
   },
 });
