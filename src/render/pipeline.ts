@@ -31,6 +31,13 @@ export class Pipeline {
         tDiffuse: { value: null },
         uTime: { value: 0 },
         uRes: { value: new THREE.Vector2(1, 1) },
+        uChroma: { value: CONFIG.render.chromaShift },
+        uDither: { value: CONFIG.render.ditherAmount },
+        uGrain: { value: CONFIG.render.grainAmount },
+        uVignetteMin: { value: CONFIG.render.vignetteMin },
+        uColorLevels: { value: Math.pow(2, CONFIG.render.colorBits) },
+        uScanline: { value: CONFIG.render.scanlineAmount },
+        uJitter: { value: CONFIG.render.lineJitter },
       },
       vertexShader: POST_VERT,
       fragmentShader: POST_FRAG,
@@ -92,6 +99,13 @@ const POST_FRAG = /* glsl */ `
   uniform sampler2D tDiffuse;
   uniform vec2 uRes;
   uniform float uTime;
+  uniform float uChroma;
+  uniform float uDither;
+  uniform float uGrain;
+  uniform float uVignetteMin;
+  uniform float uColorLevels;
+  uniform float uScanline;
+  uniform float uJitter;
   varying vec2 vUv;
 
   float bayer4(vec2 p) {
@@ -106,27 +120,36 @@ const POST_FRAG = /* glsl */ `
   }
 
   void main() {
-    vec3 c = texture2D(tDiffuse, vUv).rgb;
+    // VHS строковый джиттер — лёгкий сдвиг строки целиком
+    float jrow = floor(gl_FragCoord.y);
+    float jn = fract(sin(jrow * 12.9898 + floor(uTime * 6.0) * 78.233) * 43758.5453);
+    vec2 uv = vUv;
+    uv.x += (jn - 0.5) * uJitter;
+
+    vec3 c = texture2D(tDiffuse, uv).rgb;
 
     // chromatic aberration (light)
-    float sh = 0.0025;
-    c.r = mix(c.r, texture2D(tDiffuse, vUv + vec2(sh, 0.0)).r, 0.5);
-    c.b = mix(c.b, texture2D(tDiffuse, vUv - vec2(sh, 0.0)).b, 0.5);
+    c.r = mix(c.r, texture2D(tDiffuse, uv + vec2(uChroma, 0.0)).r, 0.5);
+    c.b = mix(c.b, texture2D(tDiffuse, uv - vec2(uChroma, 0.0)).b, 0.5);
 
-    // vignette
-    vec2 d = vUv - 0.5;
+    // vignette (мягкая, без чёрных провалов)
+    vec2 d = uv - 0.5;
     float v = smoothstep(0.95, 0.25, length(d));
-    c *= mix(0.35, 1.0, v);
+    c *= mix(uVignetteMin, 1.0, v);
+
+    // scanlines (едва заметные)
+    float sl = 1.0 - uScanline * (0.5 + 0.5 * sin(gl_FragCoord.y * 3.14159));
+    c *= sl;
 
     // dither
-    c += bayer4(gl_FragCoord.xy) * 0.055;
+    c += bayer4(gl_FragCoord.xy) * uDither;
 
-    // crunch (5-bit per channel)
-    c = floor(c * 32.0 + 0.5) / 32.0;
+    // crunch (N-bit per channel)
+    c = floor(c * uColorLevels + 0.5) / uColorLevels;
 
     // film grain
     float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) + uTime * 0.03);
-    c += (n - 0.5) * 0.025;
+    c += (n - 0.5) * uGrain;
 
     gl_FragColor = vec4(c, 1.0);
   }

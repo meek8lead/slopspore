@@ -24,6 +24,12 @@ const behavior = new BehaviorProfile(CONFIG.behavior.rate, CONFIG.behavior.pulse
 const player = new Player(scene, palette.uniformArray, behavior);
 scene.add(new THREE.AmbientLight(0xffffff, 1));
 
+// «Софтбокс»-свет в стиле старых edu-рендереров: следует за игроком
+// (направление задаём от камеры — сцена освещена одинаково где угодно).
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.85);
+scene.add(keyLight);
+scene.add(keyLight.target);
+
 // M4: реактивный спавнер вместо статичных трёх NPC
 const npcManager = new NpcManager(scene, palette);
 
@@ -146,6 +152,11 @@ function updateCamera() {
   cameraTarget.copy(player.position);
   camera.lookAt(cameraTarget);
   background.position.copy(camera.position);
+
+  // свет-«софтбокс»: луч из-за плеча камеры, привязан к игроку
+  const off = new THREE.Vector3(5, 9, -7).applyQuaternion(camera.quaternion);
+  keyLight.position.copy(player.position).add(off);
+  keyLight.target.position.copy(player.position);
 }
 
 // ── main loop ─────────────────────────────────────────────────────────────
@@ -323,7 +334,7 @@ function frame(now: number) {
   food.update(dt, t);
   updateCamera();
 
-  (background.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
+  (background.userData.tick as (dt: number) => void)(dt);
 
   pipeline.render(dt, t);
 

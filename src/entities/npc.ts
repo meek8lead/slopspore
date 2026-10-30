@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { makeCellSkin } from '../world/textures';
 import { CONFIG } from '../config';
 import { Palette } from '../render/palette';
 
@@ -56,6 +57,7 @@ const NPC_VERT = /* glsl */ `
     float spike = pow(max(0.0, sN), 4.0) * uSpikes;
     p += n * spike * 0.45;
     vSpike = spike;
+    vUv = uv;
     vN = normalize(normalMatrix * normal);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
@@ -65,12 +67,15 @@ const NPC_FRAG = /* glsl */ `
   precision highp float;
   varying vec3 vN;
   varying float vSpike;
+  varying vec2 vUv;
   uniform vec3 uColor;
+  uniform sampler2D uSkin;
   uniform float uAlpha;
 
   void main() {
-    float lit = 0.6 + 0.4 * max(dot(normalize(vN), vec3(0.3, 0.6, 0.7)), 0.0);
-    vec3 c = uColor * lit + vec3(vSpike * 1.2);
+    float lit = 0.55 + 0.45 * max(dot(normalize(vN), vec3(0.3, 0.6, 0.7)), 0.0);
+    float skin = texture2D(uSkin, vUv).r; // около-белая карта яркости
+    vec3 c = uColor * lit * (0.7 + 0.55 * skin) + vec3(vSpike * 1.2);
     gl_FragColor = vec4(c, uAlpha);
   }
 `;
@@ -93,7 +98,7 @@ export class Npc {
   private phase: number;
   private material: THREE.ShaderMaterial;
 
-  constructor(scene: THREE.Scene, palette: Palette, spawnPos: THREE.Vector3, spec?: NpcSpec) {
+  constructor(scene: THREE.Scene, palette: Palette, spawnPos: THREE.Vector3, skin: THREE.Texture, spec?: NpcSpec) {
     this.spec = spec ?? SMALL_SPEC;
     const detail = this.spec.tier === 'large' ? 2 : 1;
     const geo = new THREE.IcosahedronGeometry(this.spec.size, detail);
@@ -110,6 +115,7 @@ export class Npc {
         uSpikes: { value: this.spec.tier === 'large' ? 0.8 : 0 },
         uColor: { value: new THREE.Vector3(baseColor.r, baseColor.g, baseColor.b) },
         uAlpha: { value: 1 },
+        uSkin: { value: skin },
       },
       vertexShader: NPC_VERT,
       fragmentShader: NPC_FRAG,
@@ -256,6 +262,13 @@ export class Npc {
  * (с задержкой respawnDelay). Перелишние — плавно растворяются.
  */
 export class NpcManager {
+  // процедурные «кожи»: по одной на тир (без аллокаций на спавн)
+  private skinSmall = makeCellSkin(201);
+  private skinLarge = makeCellSkin(907);
+  private skinFor(spec: NpcSpec): THREE.Texture {
+    return spec.tier === 'large' ? this.skinLarge : this.skinSmall;
+  }
+
   readonly npcs: Npc[] = [];
   private scene: THREE.Scene;
   private palette: Palette;
@@ -274,7 +287,7 @@ export class NpcManager {
         (Math.random() - 0.5) * 3,
         Math.sin(angle) * r,
       );
-      this.npcs.push(new Npc(scene, palette, pos));
+      this.npcs.push(new Npc(scene, palette, pos, this.skinSmall));
     }
   }
 
@@ -297,7 +310,7 @@ export class NpcManager {
       playerPos.z + Math.sin(angle) * r,
     );
     const spec = allowLarge && Math.random() < 0.5 ? largeSpec() : undefined;
-    this.npcs.push(new Npc(this.scene, this.palette, pos, spec));
+    this.npcs.push(new Npc(this.scene, this.palette, pos, this.skinFor(spec ?? SMALL_SPEC), spec));
   }
 
   update(
@@ -383,7 +396,7 @@ export class NpcManager {
     this.npcs.length = 0;
     for (const s of states) {
       const spec: NpcSpec = s.tier === 'large' ? largeSpec() : { ...SMALL_SPEC };
-      const npc = new Npc(this.scene, this.palette, new THREE.Vector3(s.hx, s.hy, s.hz), spec);
+      const npc = new Npc(this.scene, this.palette, new THREE.Vector3(s.hx, s.hy, s.hz), this.skinFor(spec), spec);
       npc.position.set(s.x, s.y, s.z);
       npc.mesh.position.copy(npc.position);
       npc.appearInstantly();

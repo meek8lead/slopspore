@@ -2,6 +2,20 @@ export const CONFIG = {
   render: {
     internalHeight: 270,
     maxDt: 1 / 20,
+    // Пост-обработка ( Educational VHS look — мягче прежнего LSD )
+    chromaShift: 0.0016,     // хроматика
+    ditherAmount: 0.03,      // Bayer 4x4
+    grainAmount: 0.014,      // плёночное зерно
+    vignetteMin: 0.62,       // провал по углам (раньше 0.35 — слишком темно)
+    colorBits: 6,            // бит на канал (было 5 — кислотность)
+    scanlineAmount: 0.05,    // тонкие VHS строки
+    lineJitter: 0.0008,      // строковый джиттер
+  },
+  textures: {
+    cellSkinSize: 64,        // процедурная «кожа» клеток
+    backgroundW: 256,
+    backgroundH: 128,
+    repaintPeriod: 2.5,      // сек между перекрасками фона из палитры
   },
   palette: {
     size: 16,

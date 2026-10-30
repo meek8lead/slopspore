@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { mulberry32 } from '../core/rng';
 import { Palette } from '../render/palette';
+import { makeCellSkin } from './textures';
 
 interface Food {
   mesh: THREE.Mesh;
@@ -32,6 +33,7 @@ export class FoodField {
   private geo = new THREE.IcosahedronGeometry(0.28, 0);
   private detritusGeo = new THREE.IcosahedronGeometry(0.5, 1);
   private rng: () => number;
+  private skin = makeCellSkin(505); // процедурная «кожа» еды/детрита — одна на всех
 
   private density = 1;
   private tier = 0;
@@ -72,8 +74,9 @@ export class FoodField {
       center.y + (this.rng() - 0.5) * 8,
       center.z + Math.sin(angle) * radius,
     );
-    const mat = new THREE.MeshBasicMaterial({
+    const mat = new THREE.MeshLambertMaterial({
       color: palette.colors[Math.floor(this.rng() * palette.colors.length)].clone(),
+      map: this.skin,
     });
     const mesh = new THREE.Mesh(this.geo, mat);
     mesh.position.copy(pos);
@@ -95,15 +98,16 @@ export class FoodField {
       oldest.alive = true;
       oldest.mesh.visible = true;
       oldest.mesh.scale.setScalar(1);
-      (oldest.mesh.material as THREE.MeshBasicMaterial).color
+      (oldest.mesh.material as THREE.MeshLambertMaterial).color
         .copy(palette.colors[Math.floor(this.rng() * palette.colors.length)])
         .multiplyScalar(0.6);
       return;
     }
-    const mat = new THREE.MeshBasicMaterial({
+    const mat = new THREE.MeshLambertMaterial({
       color: palette.colors[Math.floor(this.rng() * palette.colors.length)]
         .clone()
         .multiplyScalar(0.6),
+      map: this.skin,
     });
     const mesh = new THREE.Mesh(this.detritusGeo, mat);
     mesh.position.copy(pos);
@@ -188,7 +192,7 @@ export class FoodField {
       f.alive = true;
       f.mesh.visible = true;
       this.applyTier(f);
-      (f.mesh.material as THREE.MeshBasicMaterial).color.copy(
+      (f.mesh.material as THREE.MeshLambertMaterial).color.copy(
         palette.colors[Math.floor(this.rng() * palette.colors.length)],
       );
       this.respawnTimer = 0.5; // одна пересадка за раз — плавно

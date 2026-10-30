@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { makeCellSkin } from '../world/textures';
 import { CONFIG } from '../config';
 import { Medium } from '../world/medium';
 import { BehaviorProfile } from './behavior';
@@ -43,6 +44,7 @@ export class Player {
         uArmor: { value: 0 },
         uSymbiosis: { value: 0 },
         uPalette: { value: paletteArray },
+        uSkin: { value: makeCellSkin(1234) }, // процедурная «кожа» клетки
       },
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -195,10 +197,13 @@ const VERT = /* glsl */ `
   uniform vec3 uStretchDir;
   uniform float uArmor;
   uniform float uHurt;
+  varying vec2 vUv;
   varying vec3 vN;
   varying vec3 vView;
   varying float vDisp;
   varying float vSpike;
+  varying vec2 vUv;
+  uniform sampler2D uSkin;
 
   float hash(vec3 p) { return fract(sin(dot(p, vec3(12.9898,78.233,45.164))) * 43758.5453); }
   float noise(vec3 p) {
@@ -244,6 +249,7 @@ const VERT = /* glsl */ `
 
     vN = normalize(normalMatrix * normal);
     vView = (modelViewMatrix * vec4(p, 1.0)).xyz;
+    vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
 `;
@@ -274,6 +280,9 @@ const FRAG = /* glsl */ `
     float tintIdx = clamp(fract(uTint + vDisp * 0.5) * 16.0, 0.0, 15.0);
     vec3 tint = uPalette[int(tintIdx)];
     base = mix(base, tint, 0.35);
+
+    // процедурная кожа: мягкое умножение яркости (палитра сохраняется)
+    base *= 0.78 + 0.42 * texture2D(uSkin, vUv).r;
 
     base += vec3(vSpike * 1.5);
     base *= mix(0.35, 1.1, uEnergy);
