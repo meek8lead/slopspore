@@ -310,15 +310,21 @@ const FRAG = /* glsl */ `
     vec3 v = normalize(-vView);
     float rim = pow(1.0 - max(dot(n, v), 0.0), 2.0);
 
-    float idx = clamp((vDisp * 4.0 + 0.5) * 16.0, 0.0, 15.0);
-    vec3 base = uPalette[int(idx)];
+    // Базовый цвет: плавный микс соседних цветов палитры по деформации поверхности.
+    // ВАЖНО: никаких uPalette[int(переменная)] — динамическая индексация uniform-
+    // массива в GLSL ES 1.0 (WebGL) не гарантирована и роняла компиляцию шейдера,
+    // из-за чего игрок и крупные NPC исчезали с экрана («пустой мир»).
+    float mixA = clamp(vDisp * 3.0 + 0.5, 0.0, 1.0);
+    vec3 base = mix(uPalette[2], uPalette[6], mixA);
 
-    float tintIdx = clamp(fract(uTint + vDisp * 0.5) * 16.0, 0.0, 15.0);
-    vec3 tint = uPalette[int(tintIdx)];
-    base = mix(base, tint, 0.35);
+    // оттенок доминантной ветки: плавный микс двух опорных цветов палитры
+    float skin = texture2D(uSkin, vec2(vUv.x, vUv.y)).r;
+    vec3 tintCol = mix(uPalette[0], uPalette[8], fract(uTint));
+    base = mix(base, tintCol, 0.4);
 
-    // процедурная кожа: мягкое умножение яркости (палитра сохраняется)
-    base *= (0.78 + 0.42 * texture2D(uSkin, vUv).r) * uBoost; // объекты ярче подложки
+    // процедурная кожа: мягкое умножение яркости (палитра сохраняется),
+    // объекты ярче подложки
+    base *= (0.78 + 0.42 * skin) * uBoost;
 
     base += vec3(vSpike * 1.5);
     base *= mix(0.35, 1.1, uEnergy);
@@ -337,9 +343,11 @@ const FRAG = /* glsl */ `
     base += vec3(0.9, 0.75, 0.4) * uSymbiosis * rim * (0.4 + 0.6 * sin(uTime * 1.1));
 
     // digestion: перевариваемый кусок виден сквозь тело — светящееся пятно
-    // оттенка съеденного, медленно «варится» (пульсирует) и гаснет по мере усвоения
-    int fIdx = int(clamp(uFoodHue * 16.0, 0.0, 15.0));
-    vec3 foodCol = uPalette[fIdx];
+    // оттенка съеденного, медленно «варится» (пульсирует) и гаснет по мере усвоения.
+    // Цвет еды — непрерывный hue 0..1 → HSV (без динамической индексации палитры).
+    vec3 hsl = abs(fract(vec3(uFoodHue) + vec3(0.0, 0.66667, 0.33333)) * 6.0 - 3.0);
+    vec3 foodCol = mix(vec3(1.0, 0.25, 0.2), vec3(0.95, 0.9, 0.8), hsl.x)
+                 * (0.6 + 0.4 * clamp(uEnergy, 0.0, 1.0));
     float blob = vBulge * smoothstep(0.08, 0.35, uDigest);
     blob *= 0.75 + 0.25 * sin(uTime * 3.0 + vUv.y * 12.0); // перистальтика
     base = mix(base, foodCol * 1.25, blob * 0.55);

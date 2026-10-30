@@ -35,6 +35,7 @@ export function largeSpec(): NpcSpec {
 const NPC_VERT = /* glsl */ `
   uniform float uTime;
   uniform float uSpikes;
+  varying vec2 vUv;
   varying vec3 vN;
   varying float vSpike;
 
