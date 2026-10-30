@@ -54,6 +54,7 @@ export class Player {
         // «желудок»: сколько только что съедено (0..1) и оттенок перевариваемой пищи
         uDigest: { value: 0 },
         uFoodHue: { value: 0.5 },
+        uTooClose: { value: 0 }, // аварийное раздувание силуэта (см. VERT)
         uPalette: { value: paletteArray },
         // опорные цвета тела — выбираются на JS как самые светлые из палитры
         uColA: { value: new THREE.Vector3(0.7, 0.7, 0.7) },
@@ -160,6 +161,9 @@ export class Player {
         this.camera.position.set(this.position.x, this.position.y + d * 0.35, this.position.z + d);
         this.camera.lookAt(this.position);
       }
+      // аварийное раздувание силуэта в шейдере: >0 только когда камера реально
+      // «внутри» или вплотную к клетке (иначе 0 — вид не меняется)
+      this.material.uniforms.uTooClose.value = Math.min(1, Math.max(0, (2.2 - camDist) / 2.2));
     }
 
     // ── behavior-driven morphology ──────────────────────────────
@@ -266,6 +270,7 @@ const VERT = /* glsl */ `
   uniform float uArmor;
   uniform float uHurt;
   uniform float uDigest;   // сколько переваривается (0..1) — раздувает «живот»
+  uniform float uTooClose; // аварийное раздувание силуэта (см. emergency outline)
   varying vec2 vUv;
   varying vec3 vN;
   varying vec3 vView;
@@ -326,15 +331,12 @@ const VERT = /* glsl */ `
     p += n * uDigest * (0.06 + 0.08 * bulge);
 
     // ── emergency outline (страховка от «не вижу себя») ────────────────────
-    // Фоновая скайбокс-сфера рисуется с depthWrite:false и прибита к камере,
-    // поэтому она НИКОГДА не может закрыть клетку. Но если игрок по какой-то
-    // причине оказался внутри радиуса камеры (кривой сейв, резкий рывок),
-    // раздуваем силуэт, чтобы он гарантированно перекрывал луч взгляда.
-    // В нормальной игре (дистанция 9+) блок даёт ровно 0 — вид не меняется.
-    vec3 camLocal = (inverse(modelMatrix) * vec4(cameraPosition, 1.0)).xyz;
-    float camD = length(camLocal);
-    float tooClose = smoothstep(2.2, 0.0, camD);
-    p += n * tooClose * 1.4;
+    // Камера всегда на орбите вокруг игрока (см. updateCamera + аварийный
+    // guard в update()), но при кривом сейве/резком рывке она может оказаться
+    // вплотную или «внутри» тела. uCamDist (мировая дистанция камера↔клетка,
+    // считается на JS) >0 только в этом случае — раздуваем силуэт, чтобы он
+    // гарантированно перекрывал луч взгляда. В нормальной игре = 0, не влияет.
+    p += n * uTooClose * 1.4;
 
     vN = normalize(normalMatrix * normal);
     vView = (modelViewMatrix * vec4(p, 1.0)).xyz;
