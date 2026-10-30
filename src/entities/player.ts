@@ -126,6 +126,20 @@ export class Player {
   feed(amount: number) {
     this.energy = Math.min(CONFIG.player.baseEnergy, this.energy + amount);
   }
+
+  /** Урон от контакта с шипастым существом — диегетический сигнал (тело гаснет). */
+  damage(amount: number) {
+    this.energy = Math.max(0, this.energy - amount);
+  }
+
+  /** Прямое восстановление полей поведения из сейва (без нарушения EMA-механики). */
+  restoreBehavior(snapshot: Record<string, number>) {
+    for (const [k, v] of Object.entries(snapshot)) {
+      if (k in this.behavior) {
+        (this.behavior as unknown as Record<string, number>)[k] = v;
+      }
+    }
+  }
 }
 
 const VERT = /* glsl */ `

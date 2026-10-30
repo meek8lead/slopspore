@@ -28,6 +28,16 @@ export class BehaviorProfile {
   photosynthesis = 0;
   chemosynthesis = 0;
 
+  /** Сила доминантной ветки (0..1) — вход для реактивной сложности мира. */
+  dominanceStrength(): number {
+    let bestV = 0;
+    for (const f of BEHAVIOR_FIELDS) {
+      const v = (this as unknown as Record<BehaviorField, number>)[f];
+      if (v > bestV) bestV = v;
+    }
+    return bestV;
+  }
+
   private pulses: Record<BehaviorField, number> = {
     predation: 0, herbivory: 0, scavenging: 0, symbiosis: 0, motility: 0,
     sessility: 0, armor: 0, toxicity: 0, evasion: 0, photosynthesis: 0, chemosynthesis: 0,
