@@ -377,14 +377,53 @@ export class NpcManager {
       }));
   }
 
+  /**
+   * Перенос всей экосистемы к позиции игрока (прибитый «дом»).
+   * Иначе при быстром уходе из окрестностей origin мир остаётся позади —
+   * и после загрузки сейва экран пуст («вижу только себя»).
+   */
+  recenter(to: THREE.Vector3) {
+    if (this.npcs.length === 0) return;
+    // центр домов популяции
+    const c = new THREE.Vector3();
+    for (const n of this.npcs) {
+      c.add(n.home);
+    }
+    c.multiplyScalar(1 / this.npcs.length);
+    // уже рядом с игроком? ничего не делаем
+    if (c.distanceTo(to) < CONFIG.npc.recenterTrigger) return;
+    const shift = to.clone().sub(c);
+    for (const n of this.npcs) {
+      n.home.add(shift);
+      n.position.add(shift);
+      n.mesh.position.copy(n.position);
+    }
+  }
+
   /** Восстановление после загрузки (заменяет стартовый набор). */
-  restore(states: Array<{ x: number; y: number; z: number; hx: number; hy: number; hz: number; tier: NpcTier }>) {
+  restore(
+    states: Array<{ x: number; y: number; z: number; hx: number; hy: number; hz: number; tier: NpcTier }>,
+    anchor?: THREE.Vector3, // если задан — дома переносятся так, чтобы рой встал вокруг anchor
+  ) {
     for (const n of this.npcs) n.dispose(this.scene);
     this.npcs.length = 0;
+    // вычисляем «центр домов» из сейва — относительно него кладём новых NPC
+    let anchorShift: THREE.Vector3 | null = null;
+    if (anchor && states.length > 0) {
+      const c = new THREE.Vector3();
+      for (const s of states) c.add(new THREE.Vector3(s.hx, s.hy, s.hz));
+      c.multiplyScalar(1 / states.length);
+      anchorShift = anchor.clone().sub(c);
+    }
     for (const s of states) {
       const spec: NpcSpec = s.tier === 'large' ? largeSpec() : { ...SMALL_SPEC };
-      const npc = new Npc(this.scene, this.palette, new THREE.Vector3(s.hx, s.hy, s.hz), spec);
+      const home = new THREE.Vector3(s.hx, s.hy, s.hz);
+      if (anchorShift) home.add(anchorShift);
+      const npc = new Npc(this.scene, this.palette, home, spec);
       npc.position.set(s.x, s.y, s.z);
+      if (anchorShift) {
+        npc.position.add(anchorShift);
+      }
       npc.mesh.position.copy(npc.position);
       npc.appearInstantly();
       this.npcs.push(npc);

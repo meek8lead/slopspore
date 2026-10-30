@@ -70,6 +70,7 @@ export const CONFIG = {
   npc: {
     count: 3,
     wanderRadius: 5,
+    recenterTrigger: 40,       // дом популяции дальше этого от игрока → рой переносится (мигание пустого мира)
     wanderSpeed: 1.5,
     fleeRange: 4,
     fleeStrength: 3,

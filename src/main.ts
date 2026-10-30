@@ -37,7 +37,10 @@ if (saved) {
   player.mitosisCount = saved.mitosisCount;
   player.position.set(saved.position.x, saved.position.y, saved.position.z);
   player.restoreBehavior(saved.behavior);
-  npcManager.restore(saved.npcs);
+  // M4-фикс: NPC и еда «прибиты» к дому — если игрок ушёл далеко, при загрузке
+  // сейва мир остаётся позади и экран пуст. Переносим экосистему к игроку.
+  npcManager.recenter(player.position);
+  npcManager.restore(saved.npcs, player.position);
   eco.restoreReactivity(
     saved.reactivity.food,
     saved.reactivity.predator,
@@ -287,6 +290,10 @@ function frame(now: number) {
   }
 
   // NPCs: менеджер обновляет популяцию по localLevel и predatorDensity
+  // M4-фикс «пустого мира»: дома NPC прибиты к точке спавна — при долгом
+  // уходе игрока рой остаётся позади. Раз в checkInterval проверяем и
+  // переносим популяцию к игроку (дистанционно, без телепорта рядом).
+  npcManager.recenter(player.position);
   const carrion = food.detritusPositions(carrionBuf); // детрит → мелкие NPC слетаются (пищевая цепь)
   npcManager.update(
     dt, t, player.position, localLevelCache, reactivity.predatorDensity,
