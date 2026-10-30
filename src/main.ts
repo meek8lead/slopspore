@@ -327,7 +327,7 @@ function frame(now: number) {
   }
 
   food.respawnDead(player.position, palette);
-  food.update(dt, t);
+  food.update(dt, t, player.position); // M4: еда дрейфует за игроком — мир не «пустеет» вдали от спавна
   updateCamera();
 
   (background.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
@@ -367,6 +367,7 @@ function frame(now: number) {
       `moving:     ${moving ? 'yes' : 'no'}`,
       `dominant:   ${behavior.dominant()}`,
       `npcs:       ${npcManager.npcs.filter((n) => n.alive).length}/${CONFIG.npc.maxCount}`,
+      `food:       ${food.aliveCount()}/${CONFIG.world.foodCount}  detritus: ${carrion.length}`,
       `pos:        (${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ${player.position.z.toFixed(1)})`,
     ],
     behavior.snapshot(),
