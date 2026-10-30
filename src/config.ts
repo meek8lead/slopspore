@@ -53,4 +53,4 @@ export const CONFIG = {
     fleeRange: 4,
     fleeStrength: 3,
   },
-} as const;
+};
