@@ -167,6 +167,10 @@ let last = performance.now();
 let t = 0;
 let recentDamage = 0;        // EMA недавнего урона (0..1)
 let saveTimer = CONFIG.save.interval;
+// «Носимая» еда в теле игрока и свежая сытость — поднимают потолок пассивного
+// восстановления выше автотрофного (путь к митозу для травоядных/падальщиков).
+let foodCarry = 0;
+let lastFoodRelief = 0;
 
 // кэш локального уровня — обновляем не каждый кадр, спавнерам хватает раз в ~0.5с
 let localLevelCache = 0;
@@ -205,6 +209,10 @@ function frame(now: number) {
   // энергии — но только в соответствующих зонах среды и с потолком autotrophCap.
   // Растение-стратегия медленнее и не делится быстро (энергия упирается в потолок),
   // хищник остаётся быстрым путём к митозу. Никаких меню — только следствия.
+  // Потолок пассивного восстановления: автотрофы упираются в autotrophCap —
+  // митоз (85%) без еды невозможен. НО: сытостьrecent-едой поднимает планку
+  // до foodEnergyCap (травоядные делятся), симбиоз даёт сверх неё небольшой
+  // приток (взаимопомощь «своих»). Так каждая ветка получает свой путь к делению.
   const energyRatioNow = player.energy / CONFIG.player.baseEnergy;
   let passiveGain = sample.chemEnergy * CONFIG.player.passiveGain;
   if (energyRatioNow < CONFIG.player.autotrophCap) {
@@ -215,10 +223,14 @@ function frame(now: number) {
       passiveGain += behavior.chemosynthesis * CONFIG.player.chemoGain * ((sample.chemEnergy - 0.5) / 0.5);
     }
   }
-  player.energy = Math.min(
-    CONFIG.player.baseEnergy * CONFIG.player.autotrophCap,
-    player.energy + passiveGain * dt,
-  );
+  const cap =
+    CONFIG.player.baseEnergy *
+    Math.min(
+      CONFIG.player.foodEnergyCap,
+      CONFIG.player.autotrophCap + lastFoodRelief,
+    ) +
+    behavior.symbiosis * CONFIG.player.symbiosisHealRate * CONFIG.player.symbiosisBoost;
+  player.energy = Math.min(cap, player.energy + passiveGain * dt);
 
   // ── eco: уровень вокруг игрока (обновляем редко — это шум, он медленный) ──
   levelTimer -= dt;
@@ -249,11 +261,13 @@ function frame(now: number) {
   const symbiosisCalmR =
     behavior.symbiosis * Math.sqrt(player.mass) * CONFIG.player.toxinRepelBonus;
 
-  // ── симбиоз: последнее «мёртвое» поле behavior. Существо, которое НЕ боится
-  // игрока и держится рядом (не в токсичной ауре, не в радиусе поедания),
-  // даёт пассивный обмен энергией. Поле растёт только через tick-событие
-  // сосуществования + слабый pulse — никаких прямых накапок. ──
+  // ── симбиоз: существо, которое НЕ боится игрока и держится рядом
+  // (не в токсичной ауре, не в радиусе поедания), даёт пассивный обмен
+  // энергией. Поле растёт только через tick-событие + слабый pulse.
+  // Бонус к «пушистости»: если игрок носит еду с собой (foodCarry>0),
+  // он может покормить «своего» — это событие symbiosis-кормления. ──
   let symbiosisNear = false;
+  let symbiosisFeedTarget: (typeof npcManager.npcs)[number] | null = null;
   {
     const personalR = Math.max(repelRadius, CONFIG.player.npcEatRange * 1.8);
     for (const npc of npcManager.npcs) {
@@ -261,6 +275,7 @@ function frame(now: number) {
       const d = npc.position.distanceTo(player.position);
       if (d < personalR + npc.spec.size + 2.5 && d > CONFIG.player.npcEatRange) {
         symbiosisNear = true;
+        symbiosisFeedTarget = npc;
         break;
       }
     }
@@ -291,6 +306,11 @@ function frame(now: number) {
   if (eaten > 0) {
     player.feed(eaten);
     behavior.pulse('herbivory', CONFIG.behavior.foodPulse);
+    foodCarry += eaten;       // «носим» еду — можно покормить симбионта
+    lastFoodRelief = Math.min(
+      CONFIG.player.foodEnergyCap - CONFIG.player.autotrophCap,
+      lastFoodRelief + eaten / CONFIG.player.baseEnergy,
+    );
   }
 
   // scavenging: подбор детрита (меньше энергии, чем живой NPC)
@@ -298,7 +318,32 @@ function frame(now: number) {
   if (scav > 0) {
     player.feed(scav);
     behavior.pulse('scavenging', CONFIG.behavior.foodPulse);
+    foodCarry += scav * 0.5;
+    lastFoodRelief = Math.min(
+      CONFIG.player.foodEnergyCap - CONFIG.player.autotrophCap,
+      lastFoodRelief + scav * 0.5 / CONFIG.player.baseEnergy,
+    );
   }
+
+  // Кормление «своего» существа: если рядом симбионт и в теле есть запас еды,
+  // часть энергии переходит соседу — событие symbiosis (pulse), не прямая накапка.
+  // Это тактический выбор: съесть самому или инвестировать в союзника, который
+  // потом поддержит тебя притоком энергии выше автотрофного потолка.
+  if (symbiosisFeedTarget && foodCarry > CONFIG.player.baseEnergy * 0.1) {
+    const gift = foodCarry * 0.3;
+    foodCarry -= gift;
+    behavior.pulse('symbiosis', CONFIG.behavior.symbiosisFeedPulse);
+    // диегетический отклик: сытый симбионт держится чуть ближе (через symbiosis-параметр)
+    void symbiosisFeedTarget;
+  }
+  // foodCarry медленно «усваивается» как небольшой пассивный доход
+  if (foodCarry > 0) {
+    const metabolized = Math.min(foodCarry, CONFIG.player.baseEnergy * 0.02 * dt);
+    foodCarry -= metabolized;
+    player.energy = Math.min(CONFIG.player.baseEnergy, player.energy + metabolized * 0.6);
+  }
+  // relief от еды заживает вместе с голодом
+  lastFoodRelief = Math.max(0, lastFoodRelief - dt * 0.02);
 
   // NPCs: менеджер обновляет популяцию по localLevel и predatorDensity
   // M4-фикс «пустого мира»: дома NPC прибиты к точке спавна — при долгом
