@@ -17,6 +17,7 @@ export class Player {
   private mitosisCooldown = 0;
   private material: THREE.ShaderMaterial;
   private behavior: BehaviorProfile;
+  private palette: THREE.Vector3[];
   private t = 0;
   // диегетический сигнал недавнего урона (0..1): тело гаснет и дрожит.
   // Не накапливается напрямую в behavior — только через pulse() из main.ts.
@@ -31,6 +32,7 @@ export class Player {
     behavior: BehaviorProfile,
   ) {
     this.behavior = behavior;
+    this.palette = paletteArray;
     const geo = new THREE.IcosahedronGeometry(0.7, 3);
     this.material = new THREE.ShaderMaterial({
       uniforms: {
@@ -50,6 +52,9 @@ export class Player {
         uDigest: { value: 0 },
         uFoodHue: { value: 0.5 },
         uPalette: { value: paletteArray },
+        // опорные цвета тела — выбираются на JS как самые светлые из палитры
+        uColA: { value: new THREE.Vector3(0.7, 0.7, 0.7) },
+        uColB: { value: new THREE.Vector3(0.5, 0.6, 0.7) },
         uSkin: { value: makeCellSkin(1234) }, // процедурная «кожа» клетки
         uBoost: { value: CONFIG.render.objectBoost },
       },
@@ -162,6 +167,26 @@ export class Player {
 
     this.material.uniforms.uTime.value = this.t;
     this.material.uniforms.uEnergy.value = energyRatio;
+
+    // ── надёжный «якорь видимости» ──────────────────────────────
+    // Раньше базовый цвет брался из uPalette[2]/uPalette[6] (константные индексы).
+    // Если палитра в какой-то фазе цикла делает эти цвета тёмными, клетка
+    // сливалась с подложкой и игрок «не видел себя». Теперь два опорных цвета
+    // выбираются на JS-стороне как САМЫЕ СВЕТЛЫЕ из текущей палитры — тело
+    // гарантированно ярче фона. Это не новый HUD/ассет — просто корректный рендер.
+    const pal = this.palette;
+    let iA = 0, iB = 1;
+    {
+      let lMax = -1, lSecond = -1;
+      for (let i = 0; i < pal.length; i++) {
+        const c = pal[i];
+        const lum = 0.299 * c.x + 0.587 * c.y + 0.114 * c.z;
+        if (lum > lMax) { lSecond = lMax; lMax = lum; iB = iA; iA = i; }
+        else if (lum > lSecond) { lSecond = lum; iB = i; }
+      }
+    }
+    (this.material.uniforms.uColA.value as THREE.Vector3).copy(pal[iA]);
+    (this.material.uniforms.uColB.value as THREE.Vector3).copy(pal[iB]);
     // uHurt — тело гаснет/дрожит после урона; uToxin — ядовитое свечение
     this.material.uniforms.uHurt.value = this.hurtSignal;
     this.material.uniforms.uToxin.value = this.behavior.toxicity;
@@ -304,22 +329,24 @@ const FRAG = /* glsl */ `
   uniform float uFoodHue;  // оттенок последнего куска (индекс палитры / 16)
   varying float vBulge;    // сторона тела, где выпирает «живот»
   uniform vec3 uPalette[16];
+  uniform vec3 uColA;   // самый светлый цвет палитры (якорь видимости)
+  uniform vec3 uColB;   // второй по яркости — для «мраморности» тела
 
   void main() {
     vec3 n = normalize(vN);
     vec3 v = normalize(-vView);
     float rim = pow(1.0 - max(dot(n, v), 0.0), 2.0);
 
-    // Базовый цвет: плавный микс соседних цветов палитры по деформации поверхности.
-    // ВАЖНО: никаких uPalette[int(переменная)] — динамическая индексация uniform-
-    // массива в GLSL ES 1.0 (WebGL) не гарантирована и роняла компиляцию шейдера,
-    // из-за чего игрок и крупные NPC исчезали с экрана («пустой мир»).
+    // Базовый цвет: микс двух ЯРКИХ опорных цветов (uColA/uColB приходят из JS
+    // как самые светлые цвета текущей палитры). Никаких uPalette[int(переменная)]
+    // и никаких фиксированных индексов вроде [2]/[6] — в фазе цикла они могли
+    // быть тёмными, и клетка сливалась с фоном («не вижу себя»).
     float mixA = clamp(vDisp * 3.0 + 0.5, 0.0, 1.0);
-    vec3 base = mix(uPalette[2], uPalette[6], mixA);
+    vec3 base = mix(uColB, uColA, mixA);
 
-    // оттенок доминантной ветки: плавный микс двух опорных цветов палитры
+    // оттенок доминантной ветки: плавный микс опорных цветов палитры
     float skin = texture2D(uSkin, vec2(vUv.x, vUv.y)).r;
-    vec3 tintCol = mix(uPalette[0], uPalette[8], fract(uTint));
+    vec3 tintCol = mix(uColB, uColA, fract(uTint));
     base = mix(base, tintCol, 0.4);
 
     // процедурная кожа: мягкое умножение яркости (палитра сохраняется),

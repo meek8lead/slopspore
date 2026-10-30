@@ -99,6 +99,11 @@ export class Npc {
 
   private phase: number;
   private material: THREE.ShaderMaterial;
+  // цвет при спавне + средняя яркость палитры на момент спавна — для «живого» цвета
+  private baseColor = new THREE.Vector3();
+  // (baseAvg больше не нужен: базовый цвет нормирован на среднее палитры)
+  // текущий средний цвет палитры (обновляет NpcManager каждый кадр)
+  static paletteAvg = new THREE.Vector3(0.5, 0.5, 0.5);
 
   constructor(scene: THREE.Scene, palette: Palette, spawnPos: THREE.Vector3, skin: THREE.Texture, spec?: NpcSpec) {
     this.spec = spec ?? SMALL_SPEC;
@@ -108,14 +113,24 @@ export class Npc {
       palette.colors.length - 1,
       Math.floor(this.spec.colorSeed * (palette.colors.length - 1)),
     );
-    const baseColor = palette.colors[idx].clone();
-    if (this.spec.tier === 'large') baseColor.multiplyScalar(0.8);
+    const baseCol = palette.colors[idx].clone();
+    if (this.spec.tier === 'large') baseCol.multiplyScalar(0.8);
+    // нормируем к средней яркости палитры: существо ярче подложки всегда
+    const avgC = palette.averageColor();
+    const avgLum = Math.max(0.05, 0.299 * avgC.r + 0.587 * avgC.g + 0.114 * avgC.b);
+    const objLum = Math.max(0.05, 0.299 * baseCol.r + 0.587 * baseCol.g + 0.114 * baseCol.b);
+    const minContrast = CONFIG.npc.contrastMin; // множитель к яркости фона
+    if (objLum < avgLum * minContrast) baseCol.multiplyScalar((avgLum * minContrast) / objLum);
+    this.baseColor.set(baseCol.r, baseCol.g, baseCol.b);
+    const avgV = new THREE.Vector3(avgC.r, avgC.g, avgC.b);
+    // нормируем базовый цвет к «единичной средней» — дальше uColor = base × paletteAvg
+    if (avgV.lengthSq() > 0.0001) this.baseColor.divide(avgV);
 
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
         uSpikes: { value: this.spec.tier === 'large' ? 0.8 : 0 },
-        uColor: { value: new THREE.Vector3(baseColor.r, baseColor.g, baseColor.b) },
+        uColor: { value: new THREE.Vector3(baseCol.r, baseCol.g, baseCol.b) },
         uAlpha: { value: 1 },
         uSkin: { value: skin },
         uBoost: { value: CONFIG.render.objectBoost },
@@ -164,6 +179,17 @@ export class Npc {
     if (!this.alive) return;
     this.phase += dt;
     this.material.uniforms.uTime.value = t + this.phase;
+
+    // Цвет существа «живёт» вместе с палитрой: при спавне baseColor нормирован
+    // на средний цвет палитры; каждый кадр uColor = base × paletteAvg(сейчас).
+    // Так NPC переливаются вместе с фоном, но сохраняют контраст (анти-слияние).
+    {
+      const uc = this.material.uniforms.uColor.value as THREE.Vector3;
+      uc.copy(this.baseColor).multiply(Npc.paletteAvg);
+      // нижняя граница яркости — существо всегда чуть ярче подложки
+      const lum = 0.299 * uc.x + 0.587 * uc.y + 0.114 * uc.z;
+      if (lum < 0.28) uc.multiplyScalar(0.28 / Math.max(lum, 0.001));
+    }
 
     const wander = new THREE.Vector3(
       Math.sin(this.phase * 0.7),
@@ -369,6 +395,10 @@ export class NpcManager {
     onHunterKill?: (victim: Npc) => void, // крупный сожрал мелкого → труп/событие в main
   ) {
     this.lastLocalLevel = localLevel;
+
+    // средний цвет палитры «на сейчас» — Npc используют его для живой подгонки цвета
+    const avg = this.palette.averageColor();
+    Npc.paletteAvg.set(avg.r, avg.g, avg.b);
 
     // Переиспользуемые буферы ролей в цепи (без аллокаций на кадр):
     // крупные охотятся на позиции мелких; мелкие чувствуют позиции крупных.
