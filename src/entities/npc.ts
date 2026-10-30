@@ -462,6 +462,12 @@ export class NpcManager {
    * Перенос всей экосистемы к позиции игрока (прибитый «дом»).
    * Иначе при быстром уходе из окрестностей origin мир остаётся позади —
    * и после загрузки сейва экран пуст («вижу только себя»).
+   *
+   * Фикс «схлопывания роя»: старая версия сдвигала ВСЕ дома параллельно к
+   * игроку — после нескольких переносов облако домов спрессовывалось в точку,
+   * существа стекались друг в друга и исчезали из вида (игрок оставался один).
+   * Теперь переносится только ЦЕНТР облака, а дома заново разбрасываются
+   * вокруг новой точки со случайным радиусом — форма популяции сохраняется.
    */
   recenter(to: THREE.Vector3) {
     if (this.npcs.length === 0) return;
@@ -473,11 +479,22 @@ export class NpcManager {
     c.multiplyScalar(1 / this.npcs.length);
     // уже рядом с игроком? ничего не делаем
     if (c.distanceTo(to) < CONFIG.npc.recenterTrigger) return;
-    const shift = to.clone().sub(c);
+    // новые дома — вокруг позиции игрока, со случайным направлением/радиусом
+    let i = 0;
     for (const n of this.npcs) {
-      n.home.add(shift);
-      n.position.add(shift);
-      n.mesh.position.copy(n.position);
+      const angle = (i / Math.max(1, this.npcs.length)) * Math.PI * 2 + Math.random() * 0.9;
+      const r =
+        CONFIG.npc.recenterSpreadMin +
+        Math.random() * (CONFIG.npc.recenterSpreadMax - CONFIG.npc.recenterSpreadMin);
+      n.home.set(
+        to.x + Math.cos(angle) * r,
+        to.y + (Math.random() - 0.5) * 6,
+        to.z + Math.sin(angle) * r,
+      );
+      // самих существ НЕ телепортируем — они сами приплывут к новым домам
+      // (телепорт на большие дистанции выглядит как «мигание» мира)
+      void i;
+      i++;
     }
   }
 

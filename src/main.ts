@@ -11,7 +11,7 @@ import { Player } from './entities/player';
 import { NpcManager } from './entities/npc';
 import { BehaviorProfile } from './entities/behavior';
 import { DebugUI } from './ui/debug';
-import { saveState, loadState, type GameState } from './core/save';
+import { saveState, loadState, clearState, type GameState } from './core/save';
 
 const pipeline = new Pipeline();
 const { scene, camera, palette } = pipeline;
@@ -92,6 +92,15 @@ if (saved) {
 void worldSeed;
 
 const debug = new DebugUI();
+
+// Кнопка сброса в debug-оверлее: чистит сейв и перезагружает страницу.
+// Решает «застрял в пустом месте из старого сохранения» — без возни с DevTools.
+if (CONFIG.debug.resetButton) {
+  debug.addResetButton(() => {
+    clearState();
+    location.reload();
+  });
+}
 
 // ── input ─────────────────────────────────────────────────────────────────
 // Бинды по физическим кодам клавиш (KeyboardEvent.code): работают при любой
