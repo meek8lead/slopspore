@@ -149,6 +149,8 @@ export class Npc {
       transparent: true,
     });
     this.mesh = new THREE.Mesh(geo, this.material);
+    // см. frustum-фикс ГГ: вершинная деформация больше стандартного bounding sphere
+    this.mesh.frustumCulled = false;
     this.position.copy(spawnPos);
     this.home = spawnPos.clone();
     this.mesh.position.copy(this.position);

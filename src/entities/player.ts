@@ -66,6 +66,12 @@ export class Player {
       fragmentShader: FRAG,
     });
     this.mesh = new THREE.Mesh(geo, this.material);
+    // ФРУСТУМ-ФИКС («не вижу себя»): вершинный шейдер раздувает тело на величину
+    // до ~1.4 единицы (uTooClose/uDigest/uSpikes), а three.js отсекает меши по
+    // СТАНДАРТному bounding sphere икосферы r=0.7 — при приближении камеры/игрока
+    // друг к другу клетка целиком «выбрасывалась» из рендера, хотя камера и мир
+    // продолжали двигаться. Отключаем frustum culling для ГГ.
+    this.mesh.frustumCulled = false;
     scene.add(this.mesh);
   }
 
@@ -156,14 +162,22 @@ export class Player {
     // телепорт происходит только когда клетка реально не видна).
     {
       const camDist = this.camera.position.distanceTo(this.position);
-      if (!Number.isFinite(camDist) || camDist < 2 || camDist > CONFIG.camera.distance * 4) {
-        const d = CONFIG.camera.distance * Math.cbrt(Math.max(0.1, this.mass));
-        this.camera.position.set(this.position.x, this.position.y + d * 0.35, this.position.z + d);
+      // «пузырь» камеры: дистанция привязки меньше радиуса тела — камера
+      // физически внутри клетки (старый сейв с большой массой, резкий рывок).
+      // Немедленно выводим её на орбиту за тело; lerp-привязка в норме не тронута.
+      const bubbleR = Math.max(2.5, Math.sqrt(this.mass) * 1.8 + 1.6);
+      if (!Number.isFinite(camDist) || camDist < bubbleR || camDist > CONFIG.camera.distance * 4) {
+        const d = Math.max(CONFIG.camera.distance * Math.cbrt(Math.max(0.1, this.mass)), bubbleR + 1);
+        // отталкиваем камеру вдоль текущей линии взгляда (если она вырождена — назад по +Z)
+        const dir = new THREE.Vector3().subVectors(this.camera.position, this.position);
+        if (!Number.isFinite(camDist) || dir.lengthSq() < 1e-6) dir.set(0, 0.35, 1);
+        dir.normalize();
+        this.camera.position.copy(this.position).addScaledVector(dir, d);
         this.camera.lookAt(this.position);
       }
       // аварийное раздувание силуэта в шейдере: >0 только когда камера реально
       // «внутри» или вплотную к клетке (иначе 0 — вид не меняется)
-      this.material.uniforms.uTooClose.value = Math.min(1, Math.max(0, (2.2 - camDist) / 2.2));
+      this.material.uniforms.uTooClose.value = Math.min(1, Math.max(0, (bubbleR - this.camera.position.distanceTo(this.position)) / bubbleR));
     }
 
     // ── behavior-driven morphology ──────────────────────────────
