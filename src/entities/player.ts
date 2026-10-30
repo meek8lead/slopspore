@@ -1,0 +1,215 @@
+import * as THREE from 'three';
+import { CONFIG } from '../config';
+import { Medium } from '../world/medium';
+import { BehaviorProfile } from './behavior';
+
+export class Player {
+  readonly mesh: THREE.Mesh;
+  readonly position = new THREE.Vector3();
+  readonly velocity = new THREE.Vector3();
+  energy = CONFIG.player.baseEnergy;
+  ecoLevel = 0;
+  mass = CONFIG.player.massStart;
+  mitosisCount = 0;
+  mitosisFlash = 0;
+
+  private mitosisCooldown = 0;
+  private material: THREE.ShaderMaterial;
+  private behavior: BehaviorProfile;
+  private t = 0;
+
+  constructor(
+    scene: THREE.Scene,
+    paletteArray: THREE.Vector3[],
+    behavior: BehaviorProfile,
+  ) {
+    this.behavior = behavior;
+    const geo = new THREE.IcosahedronGeometry(0.7, 3);
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uEnergy: { value: 1 },
+        uSpikes: { value: 0 },
+        uFuzz: { value: 0 },
+        uTint: { value: 0 },
+        uFlash: { value: 0 },
+        uStretch: { value: 0 },
+        uStretchDir: { value: new THREE.Vector3(1, 0, 0) },
+        uPalette: { value: paletteArray },
+      },
+      vertexShader: VERT,
+      fragmentShader: FRAG,
+    });
+    this.mesh = new THREE.Mesh(geo, this.material);
+    scene.add(this.mesh);
+  }
+
+  update(
+    dt: number,
+    input: { x: number; y: number },
+    medium: Medium,
+  ): { sample: ReturnType<Medium['sample']>; moving: boolean } {
+    this.t += dt;
+    const sample = medium.sample(this.position.x, this.position.y, this.position.z);
+    const viscosity = sample.viscosity;
+
+    const accel = CONFIG.player.accel / (0.4 + viscosity * 1.8);
+    this.velocity.x += input.x * accel * dt;
+    this.velocity.z += input.y * accel * dt;
+
+    const drag = Math.exp(-CONFIG.player.drag * (0.4 + viscosity) * dt);
+    this.velocity.multiplyScalar(drag);
+
+    const sp = this.velocity.length();
+    if (sp > CONFIG.player.maxSpeed) {
+      this.velocity.multiplyScalar(CONFIG.player.maxSpeed / sp);
+    }
+
+    this.position.addScaledVector(this.velocity, dt);
+
+    const moving = sp > 0.15;
+    const drain = moving ? CONFIG.player.drainMove : CONFIG.player.drainIdle;
+    this.energy = Math.max(0, this.energy - drain * dt);
+
+    // ── growth / decay ──────────────────────────────────────────
+    const energyRatio = this.energy / CONFIG.player.baseEnergy;
+    if (energyRatio > 0.6) {
+      this.mass = Math.min(CONFIG.player.massMax, this.mass + CONFIG.player.massGrowth * dt);
+    } else if (energyRatio < 0.2) {
+      this.mass = Math.max(CONFIG.player.massMin, this.mass - CONFIG.player.massDecay * dt);
+    }
+
+    // ── mitosis ─────────────────────────────────────────────────
+    this.mitosisCooldown = Math.max(0, this.mitosisCooldown - dt);
+    const threshold = 2.0 + this.ecoLevel * 0.4;
+    if (
+      this.mitosisCooldown <= 0 &&
+      this.mass >= threshold &&
+      energyRatio > 0.85
+    ) {
+      this.mass *= 0.5;
+      this.energy *= 0.5;
+      this.ecoLevel += CONFIG.player.ecoLevelPerMitosis;
+      this.mitosisCount++;
+      this.mitosisFlash = 1;
+      this.mitosisCooldown = CONFIG.player.mitosisCooldown;
+    }
+    this.mitosisFlash = Math.max(0, this.mitosisFlash - dt * 2.5);
+
+    // ── body scale ──────────────────────────────────────────────
+    const scale = Math.sqrt(this.mass);
+    this.mesh.scale.setScalar(scale);
+    this.mesh.position.copy(this.position);
+
+    // ── behavior-driven morphology ──────────────────────────────
+    this.material.uniforms.uSpikes.value =
+      this.behavior.predation * 0.7 + this.behavior.armor * 0.4;
+    this.material.uniforms.uFuzz.value =
+      this.behavior.chemosynthesis * 1.0 + this.behavior.symbiosis * 0.6;
+    this.material.uniforms.uTint.value = this.behavior.dominantIndex() / 11;
+    this.material.uniforms.uFlash.value = this.mitosisFlash;
+
+    const speedRatio = Math.min(1, this.velocity.length() / CONFIG.player.maxSpeed);
+    this.material.uniforms.uStretch.value = this.behavior.motility * 0.35 * speedRatio;
+    if (this.velocity.lengthSq() > 0.001) {
+      (this.material.uniforms.uStretchDir.value as THREE.Vector3)
+        .copy(this.velocity)
+        .normalize();
+    }
+
+    this.material.uniforms.uTime.value = this.t;
+    this.material.uniforms.uEnergy.value = energyRatio;
+
+    return { sample, moving };
+  }
+
+  feed(amount: number) {
+    this.energy = Math.min(CONFIG.player.baseEnergy, this.energy + amount);
+  }
+}
+
+const VERT = /* glsl */ `
+  uniform float uTime;
+  uniform float uSpikes;
+  uniform float uFuzz;
+  uniform float uStretch;
+  uniform vec3 uStretchDir;
+  varying vec3 vN;
+  varying vec3 vView;
+  varying float vDisp;
+  varying float vSpike;
+
+  float hash(vec3 p) { return fract(sin(dot(p, vec3(12.9898,78.233,45.164))) * 43758.5453); }
+  float noise(vec3 p) {
+    vec3 i = floor(p); vec3 f = fract(p);
+    f = f*f*(3.0-2.0*f);
+    return mix(mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x),
+                   mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+               mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
+                   mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
+  }
+
+  void main() {
+    vec3 p = position;
+    vec3 n = normalize(position);
+
+    // base wobble
+    float w1 = noise(p * 2.0 + vec3(uTime * 0.5, uTime * 0.3, uTime * 0.2));
+    float w2 = noise(p * 4.5 - vec3(uTime * 0.4));
+    float disp = (w1 - 0.5) * 0.16 + (w2 - 0.5) * 0.09;
+    p += n * disp;
+    vDisp = disp;
+
+    // spikes / protrusions
+    float sN = noise(p * 5.0 + uTime * 0.2);
+    float spike = pow(max(0.0, sN), 4.0) * uSpikes;
+    p += n * spike * 0.4;
+    vSpike = spike;
+
+    // surface fuzz
+    float fN = noise(p * 14.0 + uTime * 0.7);
+    p += n * (fN - 0.5) * uFuzz * 0.06;
+
+    // stretch along velocity direction
+    float proj = dot(p, uStretchDir);
+    p += uStretchDir * proj * uStretch;
+
+    vN = normalize(normalMatrix * normal);
+    vView = (modelViewMatrix * vec4(p, 1.0)).xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  }
+`;
+
+const FRAG = /* glsl */ `
+  precision highp float;
+  varying vec3 vN;
+  varying vec3 vView;
+  varying float vDisp;
+  varying float vSpike;
+  uniform float uTime;
+  uniform float uEnergy;
+  uniform float uTint;
+  uniform float uFlash;
+  uniform vec3 uPalette[16];
+
+  void main() {
+    vec3 n = normalize(vN);
+    vec3 v = normalize(-vView);
+    float rim = pow(1.0 - max(dot(n, v), 0.0), 2.0);
+
+    float idx = clamp((vDisp * 4.0 + 0.5) * 16.0, 0.0, 15.0);
+    vec3 base = uPalette[int(idx)];
+
+    float tintIdx = clamp(fract(uTint + vDisp * 0.5) * 16.0, 0.0, 15.0);
+    vec3 tint = uPalette[int(tintIdx)];
+    base = mix(base, tint, 0.35);
+
+    base += vec3(vSpike * 1.5);
+    base *= mix(0.35, 1.1, uEnergy);
+    base = mix(base * 0.4, base, 1.0 - rim);
+    base += vec3(0.25) * rim * (0.6 + 0.4 * sin(uTime * 4.0));
+    base += vec3(1.0, 0.9, 0.6) * uFlash * 0.8;
+
+    gl_FragColor = vec4(base, 1.0);
+  }
+`;
