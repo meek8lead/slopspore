@@ -142,6 +142,8 @@ export class Npc {
     repelRadius = 0,
     carrion: readonly THREE.Vector3[] = [], // живой детрит — пищевая цепь (M4)
     symbiosis = 0, // «пушистость» игрока: мелкие существа считывают её как «свой»
+    hunters: readonly THREE.Vector3[] = [], // крупные хищники — цепь замкнута
+    smallPrey: readonly THREE.Vector3[] = [], // позиции мелких — цель охоты крупных
   ): void {
     // fade-in / fade-out работает даже когда !alive (растворение)
     if (this.fadingOut) {
@@ -200,7 +202,7 @@ export class Npc {
       // страх и вместо паники держатся рядом. Это «свой» сигнал, не меню.
       const symbioticR = this.spec.tier === 'small' ? this.fleeRange() * symbiosis : 0;
       if (distP < symbioticR) {
-        // мягкое любопытство: слегка притормаживаем побег, тянемся к соседу
+        // мягкое любопытство: слегка прормаживаем побег, тянемся к соседу
         desired.add(toPlayer.clone().normalize().multiplyScalar(-0.35));
       } else {
         const flee = toPlayer.normalize().multiplyScalar(CONFIG.npc.fleeStrength * 2);
@@ -214,6 +216,40 @@ export class Npc {
       // крупняк не преследует — только мелкие любопытны; лёгкое выравнивание
       // по глубине, чтобы погоня/убегание были настоящими 3D
       desired.y += (playerPos.y - this.position.y) * 0.15;
+    }
+
+    // ── пищевая цепь, уровень 2 ──
+    if (this.spec.tier === 'large') {
+      // крупные — хищники: охотятся на ближайшую мелкую добычу (и на падаль).
+      let prey: THREE.Vector3 | null = null;
+      let pd = CONFIG.npc.huntRange;
+      for (const s of smallPrey) {
+        const d = s.distanceTo(this.position);
+        if (d < pd) { pd = d; prey = s; }
+      }
+      if (!prey && carrion.length > 0) {
+        // добычи нет — бродят к падали (хищник всёяден, детрит не пропадает)
+        for (const c of carrion) {
+          const d = c.distanceTo(this.position);
+          if (d < CONFIG.npc.carrionRange * 1.4 && d < pd) { pd = d; prey = c; }
+        }
+      }
+      if (prey) {
+        desired.add(
+          prey.clone().sub(this.position).normalize().multiplyScalar(CONFIG.npc.huntPull),
+        );
+      }
+    } else {
+      // мелкие чувствуют хищника издалека и разбегаются сильнее, чем от игрока —
+      // игрок видит «волну паники» в популяции до того, как поймёт причину
+      for (const h of hunters) {
+        const dh = this.position.distanceTo(h);
+        if (dh < CONFIG.npc.fearOfHunterRange) {
+          const away = this.position.clone().sub(h).normalize();
+          const panic = 1 - dh / CONFIG.npc.fearOfHunterRange;
+          desired.add(away.multiplyScalar(CONFIG.npc.fearOfHunterStrength * (0.5 + panic)));
+        }
+      }
     }
 
     if (desired.lengthSq() > 0.0001) {
@@ -261,6 +297,11 @@ export class Npc {
  * При localLevel > порога могут спавниться крупные. Мёртвых заменяет
  * (с задержкой respawnDelay). Перелишние — плавно растворяются.
  */
+
+// Переиспользуемые буферы ролей в пищевой цепи (аллоцируются один раз)
+const hunterBuf: THREE.Vector3[] = [];
+const preyBuf: THREE.Vector3[] = [];
+
 export class NpcManager {
   // процедурные «кожи»: по одной на тир (без аллокаций на спавн)
   private skinSmall = makeCellSkin(201);
@@ -322,11 +363,36 @@ export class NpcManager {
     repelRadius = 0, // токсичная аура игрока (main.ts считает из behavior.toxicity)
     carrion: readonly THREE.Vector3[] = [], // живой детрит — пищевая цепь (M4)
     symbiosis = 0, // «пушистость» игрока — мелкие существа теряют страх (симбиоз)
+    onHunterKill?: (victim: Npc) => void, // крупный сожрал мелкого → труп/событие в main
   ) {
     this.lastLocalLevel = localLevel;
 
+    // Переиспользуемые буферы ролей в цепи (без аллокаций на кадр):
+    // крупные охотятся на позиции мелких; мелкие чувствуют позиции крупных.
+    hunterBuf.length = 0;
+    preyBuf.length = 0;
+    for (const n of this.npcs) {
+      if (!n.alive || n.fadingOut) continue;
+      if (n.spec.tier === 'large') hunterBuf.push(n.position);
+      else preyBuf.push(n.position);
+    }
+
     for (const npc of this.npcs) {
-      npc.update(dt, t, playerPos, repelRadius, carrion, symbiosis);
+      npc.update(dt, t, playerPos, repelRadius, carrion, symbiosis, hunterBuf, preyBuf);
+    }
+
+    // ── охота завершена? крупный догнал мелкого — цепь сомкнулась ──
+    for (const h of this.npcs) {
+      if (!h.alive || h.fadingOut || h.spec.tier !== 'large') continue;
+      for (const v of this.npcs) {
+        if (v === h || !v.alive || v.fadingOut || v.spec.tier !== 'small') continue;
+        const d = h.position.distanceTo(v.position);
+        if (d < CONFIG.npc.huntKillRange + v.spec.size * 0.5) {
+          v.kill();
+          onHunterKill?.(v);
+          break;
+        }
+      }
     }
     // чистка полностью растворившихся
     for (let i = this.npcs.length - 1; i >= 0; i--) {

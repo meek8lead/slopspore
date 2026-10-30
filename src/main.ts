@@ -354,6 +354,16 @@ function frame(now: number) {
   npcManager.update(
     dt, t, player.position, localLevelCache, reactivity.predatorDensity,
     Math.max(repelRadius, symbiosisCalmR), carrion, behavior.symbiosis,
+    // пищевая цепь замкнута: крупный сожрал мелкого — остаётся труп, и игрок
+    // может подобрать его позже (scavenging). Никаких сообщений — только тело мира.
+    (victim) => {
+      food.addDetritus(
+        victim.position.clone(),
+        victim.spec.energy * CONFIG.behavior.detritusRatio,
+        palette,
+      );
+      npcManager.notifyKilled();
+    },
   );
   for (const npc of npcManager.npcs) {
     if (!npc.alive) continue;
