@@ -9,11 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "three": "^0.160.0",
-    "simplex-noise": "^4.0.1"
+    "simplex-noise": "^4.0.1",
+    "three": "^0.160.0"
   },
   "devDependencies": {
+    "@shaderfrog/glsl-parser": "^7.0.1",
     "@types/three": "^0.160.0",
+    "gl": "^8.1.6",
     "typescript": "^5.3.3",
     "vite": "^5.0.10"
   }

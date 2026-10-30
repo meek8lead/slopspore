@@ -75,9 +75,18 @@ const NPC_FRAG = /* glsl */ `
   uniform float uBoost;   // объекты ярче подложки
 
   void main() {
-    float lit = 0.55 + 0.45 * max(dot(normalize(vN), vec3(0.3, 0.6, 0.7)), 0.0);
+    // Двойной «под» — как у игрока: свет из направления камеры + мягкий
+    // заполняющий снизу. Раньше освещение было в мировых координатах
+    // (vec3(0.3,0.6,0.7)) — существо оказывалось тёмным с одной стороны
+    // и сливалось с фоном («не вижу существ»).
+    vec3 n = normalize(vN);
+    float key = 0.55 + 0.45 * max(dot(n, normalize(vec3(0.3, 0.6, 0.7))), 0.0);
+    float fill = 0.35 + 0.25 * max(dot(n, vec3(-0.3, -0.5, 0.4)), 0.0);
+    float lit = max(key, fill);
     float skin = texture2D(uSkin, vUv).r; // около-белая карта яркости
     vec3 c = (uColor * lit * (0.7 + 0.55 * skin) + vec3(vSpike * 1.2)) * uBoost;
+    // нижняя guarantee: ни одна грань не темнее 0.45*uColor*uBoost — тело читается всегда
+    c = max(c, uColor * 0.45 * uBoost);
     gl_FragColor = vec4(c, uAlpha);
   }
 `;

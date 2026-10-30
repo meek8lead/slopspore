@@ -25,14 +25,17 @@ export class Player {
   // «желудок»: сколько переваривается (0..1) и оттенок последнего куска
   digestAmount = 0;
   foodHue = 0.5;
+  private camera: THREE.PerspectiveCamera;
 
   constructor(
     scene: THREE.Scene,
     paletteArray: THREE.Vector3[],
     behavior: BehaviorProfile,
+    camera: THREE.PerspectiveCamera, // для аварийной гарантии видимости (см. update)
   ) {
     this.behavior = behavior;
     this.palette = paletteArray;
+    this.camera = camera;
     const geo = new THREE.IcosahedronGeometry(0.7, 3);
     this.material = new THREE.ShaderMaterial({
       uniforms: {
@@ -142,6 +145,22 @@ export class Player {
     const scale = Math.sqrt(this.mass);
     this.mesh.scale.setScalar(scale);
     this.mesh.position.copy(this.position);
+
+    // ── аварийная гарантия видимости ГГ (фикс «не вижу себя») ──────────────
+    // Камера прибита к игроку с lerp-задержкой; если игрок загружен из старого
+    // сейва в точке, куда камера ещё не долетела (или при резком рывке), клетка
+    // может оказаться за камерой / внутри её радиуса — на экране пусто.
+    // Раз в кадр проверяем дистанцию и при необходимости ставим камеру на
+    // корректную орбиту МГНОВЕННО (без нарушения lerp в нормальном полёте:
+    // телепорт происходит только когда клетка реально не видна).
+    {
+      const camDist = this.camera.position.distanceTo(this.position);
+      if (!Number.isFinite(camDist) || camDist < 2 || camDist > CONFIG.camera.distance * 4) {
+        const d = CONFIG.camera.distance * Math.cbrt(Math.max(0.1, this.mass));
+        this.camera.position.set(this.position.x, this.position.y + d * 0.35, this.position.z + d);
+        this.camera.lookAt(this.position);
+      }
+    }
 
     // ── behavior-driven morphology ──────────────────────────────
     this.material.uniforms.uSpikes.value =
@@ -255,6 +274,8 @@ const VERT = /* glsl */ `
   varying float vBulge;    // сторона тела, где выпирает «живот»
   uniform sampler2D uSkin;
   uniform float uBoost;
+  // THREE.js автоматически предоставляет cameraPos (мировые координаты камеры)
+  // во всех вершинных шейдерах — используем для emergency-описание силуэта.
 
   float hash(vec3 p) { return fract(sin(dot(p, vec3(12.9898,78.233,45.164))) * 43758.5453); }
   float noise(vec3 p) {
@@ -303,6 +324,17 @@ const VERT = /* glsl */ `
     vec3 bdir = normalize(vec3(sin(uTime * 0.7), 0.3, cos(uTime * 0.7)));
     float bulge = smoothstep(0.2, 1.0, dot(n, bdir));
     p += n * uDigest * (0.06 + 0.08 * bulge);
+
+    // ── emergency outline (страховка от «не вижу себя») ────────────────────
+    // Фоновая скайбокс-сфера рисуется с depthWrite:false и прибита к камере,
+    // поэтому она НИКОГДА не может закрыть клетку. Но если игрок по какой-то
+    // причине оказался внутри радиуса камеры (кривой сейв, резкий рывок),
+    // раздуваем силуэт, чтобы он гарантированно перекрывал луч взгляда.
+    // В нормальной игре (дистанция 9+) блок даёт ровно 0 — вид не меняется.
+    vec3 camLocal = (inverse(modelMatrix) * vec4(cameraPosition, 1.0)).xyz;
+    float camD = length(camLocal);
+    float tooClose = smoothstep(2.2, 0.0, camD);
+    p += n * tooClose * 1.4;
 
     vN = normalize(normalMatrix * normal);
     vView = (modelViewMatrix * vec4(p, 1.0)).xyz;
