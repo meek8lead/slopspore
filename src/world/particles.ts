@@ -120,12 +120,35 @@ export class FoodField {
     });
   }
 
-  update(dt: number, t: number) {
+  update(dt: number, t: number, playerPos: THREE.Vector3) {
     for (const f of this.foods) {
       if (!f.alive) continue;
       f.mesh.rotation.x += 0.012;
       f.mesh.rotation.y += 0.015;
       f.mesh.position.y += Math.sin(t * 1.7 + f.mesh.position.x * 0.8) * 0.002;
+      // M4-фикс «мира без еды»: еда не следует за игроком — при долгом пути
+      // все икосаэдры остаются позади. Живая еда медленно дрейфует к клетке
+      // (как планктон за течением); совсем далеко — «переселяется» в поле видимости.
+      const dx = playerPos.x - f.mesh.position.x;
+      const dy = playerPos.y - f.mesh.position.y;
+      const dz = playerPos.z - f.mesh.position.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d > CONFIG.world.foodSpawnRadius) {
+        // нормализованный дрейф: постоянная скорость «к течению за клеткой»
+        const step = Math.min(d, CONFIG.food.driftSpeed * dt * 12); // ~4 ед/сек
+        f.mesh.position.x += (dx / d) * step;
+        f.mesh.position.y += (dy / d) * step;
+        f.mesh.position.z += (dz / d) * step;
+      } else if (d > CONFIG.food.driftMax) {
+        // гарантировано далеко — тихий перенос ближе к игроку
+        const angle = this.rng() * Math.PI * 2;
+        const r = CONFIG.food.driftMin + this.rng() * CONFIG.world.foodSpawnRadius;
+        f.mesh.position.set(
+          playerPos.x + Math.cos(angle) * r,
+          playerPos.y + (this.rng() - 0.5) * 8,
+          playerPos.z + Math.sin(angle) * r,
+        );
+      }
     }
     // детрит оседает и гаснет
     for (const d of this.detritus) {
@@ -178,6 +201,13 @@ export class FoodField {
     return out;
   }
 
+  /** Сколько еды сейчас живо — для debug-строки. */
+  aliveCount(): number {
+    let n = 0;
+    for (const f of this.foods) if (f.alive) n++;
+    return n;
+  }
+
   respawnDead(playerPos: THREE.Vector3, palette: Palette) {
     if (this.respawnTimer > 0) return; // темп задаёт density в update()
     for (const f of this.foods) {
@@ -195,7 +225,7 @@ export class FoodField {
       (f.mesh.material as THREE.MeshLambertMaterial).color.copy(
         palette.colors[Math.floor(this.rng() * palette.colors.length)],
       );
-      this.respawnTimer = 0.5; // одна пересадка за раз — плавно
+      this.respawnTimer = CONFIG.food.respawnInterval; // одна пересадка за раз — плавно
     }
   }
 }

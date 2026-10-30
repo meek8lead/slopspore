@@ -16,7 +16,22 @@ export class Pipeline {
   private postMaterial: THREE.ShaderMaterial;
 
   constructor() {
+    // явный WebGL2 (инвариант проекта). Если контекст недоступен — понятная
+    // ошибка в консоль вместо молчаливого чёрного экрана.
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2', {
+      antialias: false,
+      powerPreference: 'high-performance',
+      alpha: false,
+    });
+    if (!gl) {
+      throw new Error(
+        'ПУСТОТА: WebGL2 недоступен. Обновите браузер или включите аппаратное ускорение.',
+      );
+    }
     this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      context: gl,
       antialias: false,
       powerPreference: 'high-performance',
     });

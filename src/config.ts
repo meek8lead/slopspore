@@ -84,6 +84,7 @@ export const CONFIG = {
   npc: {
     count: 3,
     wanderRadius: 5,
+    recenterTrigger: 40,       // дом популяции дальше этого от игрока → рой переносится (мигание пустого мира)
     wanderSpeed: 1.5,
     fleeRange: 4,
     fleeStrength: 3,
@@ -115,6 +116,12 @@ export const CONFIG = {
     blendBase: 0.55,           // базовая доля уровня игрока в rubberband-миксе
     rubberBaseRadius: 12,      // радиус влияния игрока при ecoLevel = 0
     rubberGrowth: 10,          // +радиус на единицу ecoLevel
+    // M4-балансировка (6.7): раньше порог крупных NPC не достигался никогда —
+    // localLevel упирался в ceiling при maxEco≈0.35. Теперь потолок выше и
+    // растёт вместе с раббербенд-радиусом: мир «раскрывается» по мере эволюции.
+    pullMax: 0.9,              // макс. доля подтяжки к уровню игрока (было жёсткое 0.55)
+    ceilingPerLevel: 0.8,      // +потолок localLevel за каждую единицу ecoLevel
+    ceilingBase: 0.6,          // потолок localLevel при ecoLevel = 0
     reactivityRate: 0.08,      // EMA-сглаживание реактивности
     minMult: 0.5,              // без «режима бога»: не ниже 0.5×
     maxMult: 2.0,              // и не выше 2×
@@ -127,6 +134,10 @@ export const CONFIG = {
     tierSizePerLevel: 0.5,     // множитель визуального размера
     detritusLifetime: 10,      // сек до оседания трупа
     detritusSink: 0.5,         // скорость погружения детрита
+    respawnInterval: 0.5,      // сек между «пересадками» мёртвой еды (при density=1)
+    driftMin: 2,               // еда не может дрейфовать ближе этого к игроку
+    driftMax: 40,              // дальше этого — гарантированный перенос к игроку
+    driftSpeed: 0.35,          // скорость дрейфа еды к игроку (ед/сек, ~0.5× maxSpeed)
   },
   save: {
     version: 1,

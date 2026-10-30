@@ -61,10 +61,21 @@ export class EcoField {
     const radius = CONFIG.eco.rubberBaseRadius + playerEcoLevel * CONFIG.eco.rubberGrowth;
     const d = x.distanceTo(playerPos);
     const rubberband = Math.exp(-(d * d) / (radius * radius));
-    // blendBase — базовая доля уровня игрока: даже далеко от него мир чуть «подтянут»
-    const pull = clamp(CONFIG.eco.blendBase * rubberband + playerEcoLevel * 0.25 * rubberband, 0, 1);
+    // M4-балансировка: раньше pull был заперт на blendBase (0.55), и localLevel
+    // у самого игрока упирался в ~eco·0.55+truth·0.45 — порог крупных NPC (0.3)
+    // становился почти недостижимым. Теперь подтяжка растёт с ecoLevel:
+    // мир вокруг «раскрывается» по мере эволюции — незаметно, без сообщений.
+    const pullStrength = clamp(
+      CONFIG.eco.blendBase + playerEcoLevel * 0.8,
+      0,
+      CONFIG.eco.pullMax,
+    );
+    const pull = clamp(pullStrength * rubberband, 0, 1);
     const truth = this.trueLevel(x, t);
-    return truth + (playerEcoLevel - truth) * pull;
+    const mixed = truth + (playerEcoLevel - truth) * pull;
+    // потолок локального уровня тоже растёт с игроком — «жирность» мира
+    const ceiling = CONFIG.eco.ceilingBase + playerEcoLevel * CONFIG.eco.ceilingPerLevel;
+    return Math.min(mixed, ceiling);
   }
 
   /** Реактивная сложность: сглаженные множители для спавнеров. */
