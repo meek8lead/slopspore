@@ -81,7 +81,13 @@ export class FoodField {
     const mesh = new THREE.Mesh(this.geo, mat);
     mesh.position.copy(pos);
     this.group.add(mesh);
-    const f: Food = { mesh, energy: 14, alive: true, baseEnergy: 14 };
+    // baseEnergy 14..20 — разброс «питательности» кусков (одна пересадка за раз)
+    const f: Food = {
+      mesh,
+      energy: 14,
+      alive: true,
+      baseEnergy: 14 + Math.floor(this.rng() * CONFIG.food.energySpread),
+    };
     this.applyTier(f);
     this.foods.push(f);
   }
